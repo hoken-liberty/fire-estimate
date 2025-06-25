@@ -1,0 +1,1919 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#000000" />
+    <meta
+      name="description"
+      content="個人用火災保険お見積もり情報入力アプリケーション"
+    />
+    <title>リバティ保険ショップ - 個人用火災保険お見積もり</title>
+
+    <!-- Tailwind CSS CDNを読み込み -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Interフォントを読み込み -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <!-- jsPDFとhtml2canvasのCDNを読み込み (PDF生成用) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <style>
+      /* カスタムフォントとフォーム要素のスタイリング */
+      body {
+        font-family: 'Inter', 'Noto Sans JP', sans-serif;
+      }
+      input[type="radio"].form-radio,
+      input[type="checkbox"].form-checkbox {
+          appearance: none;
+          -webkit-appearance: none;
+          -moz-appearance: none;
+          border: 2px solid #D1D5DB; /* gray-300 */
+          border-radius: 50%; /* for radio */
+          width: 1.25rem; /* h-5 */
+          height: 1.25rem; /* w-5 */
+          cursor: pointer;
+          transition: all 0.2s ease-in-out;
+      }
+      input[type="checkbox"].form-checkbox {
+          border-radius: 0.25rem; /* rounded */
+      }
+      input[type="radio"].form-radio:checked,
+      input[type="checkbox"].form-checkbox:checked {
+          background-color: #CC0022; /* リバティ保険ショップのテーマカラー */
+          border-color: #CC0022; /* リバティ保険ショップのテーマカラー */
+          position: relative;
+      }
+      input[type="radio"].form-radio:checked::before {
+          content: '';
+          display: block;
+          width: 0.5rem; /* h-2 */
+          height: 0.5rem; /* w-2 */
+          background-color: white;
+          border-radius: 50%;
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+      }
+      input[type="checkbox"].form-checkbox:checked::before {
+          content: '';
+          display: block;
+          width: 0.75rem; /* for checkmark */
+          height: 0.75rem; /* for checkmark */
+          background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M12.207 4.793a1 1 0 00-1.414-1.414L6.5 9.086 4.207 6.793a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l5-5z'/%3e%3c/svg%3e");
+          background-size: 100% 100%;
+          background-repeat: no-repeat;
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+      }
+      input[type="radio"].form-radio:focus,
+      input[type="checkbox"].form-checkbox:focus {
+          outline: none;
+          box-shadow: 0 0 0 3px rgba(204, 0, 34, 0.45); /* テーマカラーに合わせたフォーカスリング */
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>JavaScriptを有効にしてください。このアプリはJavaScriptが必要です。</noscript>
+
+    <div id="app-container" class="min-h-screen bg-gray-100 font-sans text-gray-900 flex flex-col antialiased">
+      <!-- ヘッダー部分 -->
+      <header id="app-header" class="bg-white shadow-md p-4 sticky top-0 z-10"></header>
+
+      <!-- メインコンテンツ部分 -->
+      <main id="app-main" class="flex-grow container mx-auto p-4 sm:p-6 lg:p-8">
+        <div id="app-content" class="max-w-4xl mx-auto">
+          <!-- ここに各ステップのコンテンツが動的に挿入されます -->
+        </div>
+      </main>
+
+      <!-- フッター部分 -->
+      <footer id="app-footer" class="bg-white shadow-md p-4 mt-8 sticky bottom-0 z-10"></footer>
+
+      <!-- メッセージボックスのコンテナ -->
+      <div id="message-box-container"></div>
+    </div>
+
+    <script>
+      // グローバル状態管理
+      // totalStepsを修正し、ThankYouScreenを含まないようにする (6ステップ + 確認画面)
+      let currentStep = 0; // 0: Welcome, 1: BuildingInfo, ..., 5: OtherNotes, 6: Confirmation
+      const totalSteps = 6; // 全ステップ数 (Welcome + 入力5ステップ + Confirmation)
+
+      // フォームデータの初期状態
+      const initialFormData = {
+        receptionYear: '', receptionMonth: '', receptionDay: '', customerName: '',
+        // 1. 保険の対象となる物件の情報 - 建物について
+        propertyLocationSameAsReception: '', propertyLocationPostalCode: '', propertyLocationAddress: '',
+        buildingCategory: '', buildingCategoryOther: '',
+        buildingStructure: '', buildingStructureOther: '',
+        constructionYear: '', constructionMonth: '',
+        totalFloorArea: '', totalFloorAreaTsubo: '',
+        exclusiveArea: '', exclusiveAreaTsubo: '',
+        buildingOwner: '', buildingOwnerOtherRelationship: '', buildingOwnerOtherName: '',
+        buildingUsage: '',
+        seismicDiagnosis: '', seismicDiagnosisResult: '',
+        specialFoundationStructure: '', specialFoundationStructureDetails: '',
+        // 1. 保険の対象となる物件の情報 - 家財について
+        insureHouseholdGoods: '',
+        householdHeadAge: '',
+        hasValuableItems: '',
+        // 2. ご希望の補償内容 - 保険金額
+        desiredBuildingInsuranceAmount: '',
+        desiredHouseholdInsuranceAmount: '',
+        buildingDeductible: '',
+        householdDeductible: '',
+        // 2. ご希望の補償内容 - 保険期間
+        desiredInsurancePeriodYears: '',
+        desiredInsurancePeriodCustom: '',
+        insuranceStartDate: '',
+        // 2. ご希望の補償内容 - 基本補償
+        selectedPlan: '',
+        coverageFireLightningExplosion: true, // 自動セット
+        coverageWindHailSnow: true, // 自動セット
+        coverageWaterDamage: false, // 任意
+        coverageWaterDamageDeductible: '',
+        coverageTheft: false, // 任意
+        coverageTheftDeductible: '',
+        coverageFloodDamage: false, // 任意
+        coverageAccidentalDamage: false, // 任意
+        coverageAccidentalDamageDeductible: '',
+        // 2. ご希望の補償内容 - 主な費用保険金
+        expenseRemainingPropertyClearance: true, // 自動セット
+        expenseDamageScopeConfirmation: true, // 自動セット
+        expenseTemporaryRepair: true, // 自動セット
+        expenseRestorationIncidental: true, // 自動セット
+        expenseEarthquakeFire: false, // 任意
+        expenseWaterPipeRepair: false, // 任意
+        expenseDoorLockReplacement: false, // 任意
+        expenseTemporaryAllowance: false, // 任意
+        expenseDamagePrevention: true, // 自動セット
+        // 2. ご希望の補償内容 - 地震保険
+        addEarthquakeInsurance: '',
+        earthquakeBuildingInsuranceAmount: '',
+        earthquakeHouseholdInsuranceAmount: '',
+        earthquakeDiscountApplicable: '',
+        // 2. ご希望の補償内容 - 特約
+        specialPersonalLiability: false,
+        specialFireSpreadCompensation: false,
+        specialEarthquakeExcessCoverage: false,
+        specialEarthquakeFirePlan: false,
+        specialEarthquakeFirePlanType: '', // 30プラン / 50プラン
+        specialReconstructionCost: false,
+        specialBuildingElectricalMechanicalAccident: false,
+        specialPortablePropertyDamage: false,
+        specialSolarPanelProfitCyberRisk: false,
+        specialLawyerFee: false,
+        specialTenantLiability: false,
+        specialBuildingManagementLiability: false,
+        specialHouseRepairTroubleLawyerFee: false,
+        specialBalconyRepairCost: false,
+        specialOtherClause: '',
+        // 3. その他・ご要望
+        desiredPlanDetails: '',
+        importantPoints: '',
+        otherQuestions: '',
+        consentToSubmit: false,
+        signature: '', signYear: '', signMonth: '', signDay: ''
+      };
+      let formData = { ...initialFormData }; // 現在のフォームデータ
+
+      // DOM要素を簡単に作成するヘルパー関数
+      function createElement(tag, classes = [], attributes = {}, innerHTML = '') {
+        const el = document.createElement(tag);
+        if (classes.length > 0) el.className = classes.join(' ');
+        for (const key in attributes) {
+          el.setAttribute(key, attributes[key]);
+        }
+        if (innerHTML) el.innerHTML = innerHTML;
+        return el;
+      }
+
+      // フォームデータを更新し、アプリケーションを再描画する関数
+      function updateFormDataAndRender(field, value) {
+        if (typeof field === 'object' && field !== null) {
+          // 複数のフィールドを一度に更新する場合
+          formData = { ...formData, ...field };
+        } else {
+          // 単一のフィールドを更新する場合
+          formData[field] = value;
+        }
+        renderApp();
+      }
+
+      // ヘッダーをレンダリングする関数
+      function renderHeader() {
+        const headerEl = document.getElementById('app-header');
+        headerEl.innerHTML = ''; // クリア
+
+        const headerContent = createElement('div', ['max-w-4xl', 'mx-auto', 'flex', 'items-center', 'justify-between']);
+        headerContent.innerHTML = `
+          <h1 class="text-2xl font-bold text-gray-800">
+            リバティ保険ショップ<span class="text-red-600 ml-2">見積もり</span>
+          </h1>
+          <div class="flex items-center space-x-2">
+            <div class="w-40 bg-gray-200 rounded-full h-2.5">
+              <div class="bg-red-600 h-2.5 rounded-full transition-all duration-500 ease-in-out" style="width: ${((currentStep + 1) / (totalSteps + 1)) * 100}%"></div>
+            </div>
+            <span class="text-sm font-medium text-gray-700">${currentStep + 1} / ${totalSteps + 1}</span>
+          </div>
+        `;
+        headerEl.appendChild(headerContent);
+      }
+
+      // フッター（ナビゲーションボタン）をレンダリングする関数
+      function renderFooter() {
+        const footerEl = document.getElementById('app-footer');
+        footerEl.innerHTML = ''; // クリア
+
+        // currentStepがtotalSteps (つまり確認画面) の場合、フッターは表示しない（PDF生成後もフッターを非表示にするため）
+        if (currentStep > totalSteps) {
+          return;
+        }
+
+        const footerContent = createElement('div', ['max-w-4xl', 'mx-auto', 'flex', 'justify-between', 'items-center']);
+
+        if (currentStep > 0) { // WelcomeScreen (step 0) では「戻る」ボタンを表示しない
+          const prevButton = createElement('button', [
+            'flex', 'items-center', 'px-6', 'py-3', 'bg-gray-200', 'text-gray-700',
+            'rounded-full', 'shadow-md', 'hover:bg-gray-300', 'transition-colors', 'duration-200'
+          ], {}, `
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
+            </svg>
+            戻る
+          `);
+          prevButton.addEventListener('click', handlePrevious);
+          footerContent.appendChild(prevButton);
+        }
+
+        const isLastStep = (currentStep === totalSteps); // Confirmation Screen is the new last step
+
+        const nextButtonClass = isLastStep ? 'bg-[#CC0022] hover:bg-[#A3001C]' : 'bg-[#CC0022] hover:bg-[#A3001C]'; // テーマカラーを適用
+        const nextButtonText = isLastStep ? 'PDF出力' : '次へ';
+        const nextButtonMarginClass = currentStep === 0 ? 'ml-auto' : ''; // WelcomeScreen のみ右寄せ
+
+        const nextButton = createElement('button', [
+          'flex', 'items-center', nextButtonMarginClass, 'px-6', 'py-3',
+          'rounded-full', 'shadow-lg', 'transition-all', 'duration-200',
+          nextButtonClass, 'text-white', 'font-semibold'
+        ], {}, `
+          ${nextButtonText}
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 ml-2" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+          </svg>
+        `);
+        nextButton.addEventListener('click', handleNext);
+        footerContent.appendChild(nextButton);
+
+        footerEl.appendChild(footerContent);
+      }
+
+      // ナビゲーション関数
+      function handleNext() {
+        if (currentStep < totalSteps) { // totalStepsは確認画面の手前まで
+          currentStep++;
+        } else if (currentStep === totalSteps) { // 最終ステップ（確認画面）での処理
+          if (!formData.consentToSubmit) {
+            showMessageBox("PDF出力には同意チェックが必要です。", null);
+            return;
+          }
+          exportFormToPDF(); // PDF生成関数を呼び出す
+          // PDF生成後、確認画面に留まるか、完了メッセージを表示
+          showMessageBox("PDFが正常に生成され、ダウンロードされました。", null);
+          return;
+        }
+        renderApp();
+      }
+
+      function handlePrevious() {
+        if (currentStep > 0) {
+          currentStep--;
+        }
+        renderApp();
+      }
+
+      // PDF生成関数を外部に切り出し
+      function exportFormToPDF() {
+        const input = document.getElementById('pdf-content-to-capture');
+        if (!input) {
+          console.error('PDF出力対象の要素が見つかりません。');
+          return;
+        }
+
+        console.log('PDF生成処理を開始します...');
+        html2canvas(input, {
+          scale: 2,
+          useCORS: true, // クロスオリジン画像を許可
+          logging: true, // コンソールにログを出力
+          windowWidth: document.querySelector('.max-w-4xl').scrollWidth,
+          windowHeight: document.querySelector('.max-w-4xl').scrollHeight
+        }).then((canvas) => {
+          console.log('html2canvasによるキャンバスレンダリングが完了しました。');
+          const imgData = canvas.toDataURL('image/png');
+          console.log('キャンバスデータをPNG画像データURLに変換しました。');
+
+          // jsPDFのコンストラクターを正しく呼び出す
+          const pdf = new window.jspdf.jsPDF('p', 'mm', 'a4');
+          const imgWidth = 210; // A4幅 (mm)
+          const pageHeight = 297; // A4高さ (mm)
+          const imgHeight = (canvas.height * imgWidth) / canvas.width;
+          let heightLeft = imgHeight;
+          let position = 0;
+
+          console.log('PDFページ追加処理を開始します。');
+          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+          heightLeft -= pageHeight;
+
+          while (heightLeft >= 0) {
+            position = heightLeft - imgHeight;
+            pdf.addPage();
+            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
+            console.log('新しいページを追加し、画像を配置しました。');
+          }
+          
+          // ファイル名に顧客名と日付を追加
+          const customerName = formData.customerName ? formData.customerName.replace(/[^a-zA-Z0-9_\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]/g, '') : '不明';
+          const date = new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, ''); //YYYYMMDD形式
+
+          pdf.save(`個人用火災保険見積シート_${customerName}_${date}.pdf`);
+          console.log('PDFが正常に生成され、ダウンロードされました。');
+        }).catch((error) => {
+          console.error('PDF生成中にエラーが発生しました:', error);
+          console.error('エラーの詳細:', error.message);
+          showMessageBox("PDF出力中にエラーが発生しました。詳細については、ブラウザのコンソールをご確認ください。", null);
+        });
+      }
+
+      function handleEdit(sectionTitle) {
+        switch (sectionTitle) {
+          case '1. 保険の対象となる物件の情報 - 建物について': currentStep = 1; break;
+          case '2. 保険の対象となる物件の情報 - 家財について': currentStep = 2; break;
+          case '3. ご希望の補償内容 - 保険金額': currentStep = 3; break;
+          case '4. ご希望の補償内容 - 保険期間': currentStep = 4; break;
+          case '5. ご希望の補償内容 - 基本補償・主な費用保険金・地震保険・特約': currentStep = 5; break;
+          case '6. お支払い方法、その他・ご要望': currentStep = 6; break; // 確認画面を最終ステップに変更
+          default: currentStep = 0; break;
+        }
+        renderApp();
+      }
+
+      // カスタムメッセージボックス表示関数 (alertの代替)
+      function showMessageBox(message, onCloseCallback) {
+        const msgBoxContainer = document.getElementById('message-box-container');
+        msgBoxContainer.innerHTML = ''; // クリア
+
+        const overlay = createElement('div', ['fixed', 'inset-0', 'bg-gray-600', 'bg-opacity-50', 'flex', 'items-center', 'justify-center', 'z-50', 'p-4']);
+        const msgBox = createElement('div', ['bg-white', 'rounded-lg', 'shadow-xl', 'p-8', 'max-w-sm', 'w-full', 'text-center']);
+        const title = createElement('h3', ['text-2xl', 'font-bold', 'text-gray-800', 'mb-4'], {}, '処理完了'); // タイトルを「送信完了」から変更
+        const msgText = createElement('p', ['text-gray-700', 'mb-6'], {}, message);
+        const closeButton = createElement('button', ['px-6', 'py-2', 'bg-[#CC0022]', 'text-white', 'font-semibold', 'rounded-full', 'hover:bg-[#A3001C]', 'transition-colors', 'duration-200'], {}, '閉じる'); // テーマカラーを適用
+
+        closeButton.addEventListener('click', () => {
+          msgBoxContainer.innerHTML = ''; // メッセージボックスを削除
+          if (onCloseCallback) onCloseCallback();
+        });
+
+        msgBox.appendChild(title);
+        msgBox.appendChild(msgText);
+        overlay.appendChild(msgBox);
+        msgBoxContainer.appendChild(overlay);
+        // ここでボタンを追加する
+        msgBox.appendChild(closeButton); // ボタンをメッセージボックスに追加
+      }
+
+      // 未入力フィールドをチェックするヘルパー関数
+      const getIncompleteFields = (data) => {
+        const incomplete = [];
+
+        const checkField = (fieldKey, label, condition = true) => {
+          if (!condition) return;
+
+          const value = data[fieldKey];
+          if (typeof value === 'string' && value.trim() === '') {
+            incomplete.push(label);
+          } else if (Array.isArray(value) && value.length === 0) {
+            incomplete.push(label);
+          }
+        };
+
+        // Header fields (Reception Date, Customer Name)
+        checkField('receptionYear', '受付日(年)');
+        checkField('receptionMonth', '受付日(月)');
+        checkField('receptionDay', '受付日(日)');
+        checkField('customerName', 'お客様の氏名');
+
+        // 1. 保険の対象となる物件の情報 - 建物について
+        checkField('propertyLocationSameAsReception', '物件所在地');
+        if (data.propertyLocationSameAsReception === '異なる') {
+          checkField('propertyLocationPostalCode', '物件所在地(郵便番号)');
+          checkField('propertyLocationAddress', '物件所在地(都道府県から)');
+        }
+        checkField('buildingCategory', '建物区分');
+        if (data.buildingCategory === 'その他') {
+          checkField('buildingCategoryOther', '建物区分(その他詳細)');
+        }
+        checkField('buildingStructure', '建物構造');
+        if (data.buildingStructure === 'その他') {
+          checkField('buildingStructureOther', '建物構造(その他詳細)');
+        }
+        checkField('constructionYear', '建築年月(年)');
+        checkField('constructionMonth', '建築年月(月)');
+        checkField('totalFloorArea', '延床面積(建物全体) (m2)', data.buildingCategory === '戸建住宅');
+        checkField('exclusiveArea', '専有面積(マンション戸室) (m2)', data.buildingCategory === '分譲マンション');
+        checkField('buildingOwner', '建物所有者');
+        if (data.buildingOwner === 'その他') {
+          checkField('buildingOwnerOtherRelationship', '建物所有者(続柄)');
+          checkField('buildingOwnerOtherName', '建物所有者(氏名)');
+        }
+        checkField('buildingUsage', '建物の使用状況');
+        checkField('seismicDiagnosis', '耐震診断の有無・結果');
+        if (data.buildingCategory === '戸建住宅') {
+          checkField('specialFoundationStructure', '特殊な基礎・構造');
+          if (data.specialFoundationStructure === 'はい') {
+            checkField('specialFoundationStructureDetails', '特殊な基礎・構造(具体例)');
+          }
+        }
+
+        // 1. 保险の対象となる物件の情報 - 家財について
+        checkField('insureHouseholdGoods', '家財を保険の対象にしますか？');
+        if (data.insureHouseholdGoods === 'はい') {
+          checkField('householdHeadAge', '世帯主様の年齢');
+          checkField('hasValuableItems', '高額な貴金属・美術品等');
+        }
+
+        // 2. ご希望の補償内容 - 保険金額
+        checkField('desiredBuildingInsuranceAmount', '建物のご希望の保険金額');
+        if (data.insureHouseholdGoods === 'はい') {
+          checkField('desiredHouseholdInsuranceAmount', '家財のご希望の保険金額');
+        }
+        checkField('buildingDeductible', '建物の自己負担額');
+        checkField('householdDeductible', '家財の自己負担額', data.insureHouseholdGoods === 'はい');
+
+        // 2. ご希望の補償内容 - 保険期間
+        checkField('desiredInsurancePeriodYears', 'ご希望の保険期間(年)');
+        if (data.desiredInsurancePeriodYears === '複数年') {
+            checkField('desiredInsurancePeriodCustom', 'ご希望の保険期間(具体的な年数)');
+        }
+        checkField('insuranceStartDate', '保険始期(開始日)');
+
+        // 2. ご希望の補償内容 - 基本補償
+        checkField('selectedPlan', 'ご希望のプラン');
+        // Only check deductibles if the corresponding coverage is selected/true
+        if (data.coverageWaterDamage) {
+            checkField('coverageWaterDamageDeductible', '水濡れ自己負担額');
+        }
+        if (data.coverageTheft) {
+            checkField('coverageTheftDeductible', '盗難自己負担額');
+        }
+        if (data.coverageAccidentalDamage) {
+            checkField('coverageAccidentalDamageDeductible', '破損・汚損等自己負担額');
+        }
+
+        // 2. ご希望の補償内容 - 地震保険
+        checkField('addEarthquakeInsurance', '地震保険を付帯しますか？');
+        if (data.addEarthquakeInsurance === 'はい') {
+            checkField('earthquakeBuildingInsuranceAmount', '地震保険金額(建物)');
+            if (data.insureHouseholdGoods === 'はい') {
+                checkField('earthquakeHouseholdInsuranceAmount', '地震保険金額(家財)');
+            }
+            checkField('earthquakeDiscountApplicable', '建物の免震建築物割引・耐震等級割引等');
+        }
+
+        // 2. ご希望の補償内容 - 特約
+        if (data.specialEarthquakeFirePlan) {
+            checkField('specialEarthquakeFirePlanType', '地震火災特約(プラン)');
+        }
+
+        // 3. その他・ご要望
+        checkField('consentToSubmit', '同意チェック');
+        checkField('signature', '署名');
+        checkField('signYear', '日付(年)');
+        checkField('signMonth', '日付(月)');
+        checkField('signDay', '日付(日)');
+
+        return incomplete;
+      };
+
+      // --- 各ステップのレンダリング関数 ---
+
+      // Welcome Screen
+      function renderWelcomeScreen() {
+        const contentEl = document.getElementById('app-content');
+        contentEl.innerHTML = `
+          <div class="min-h-[calc(100vh-160px)] flex flex-col items-center justify-center text-center p-6">
+            <h2 class="text-4xl font-extrabold text-gray-800 mb-4 tracking-tight">
+              個人用火災保険 <span class="text-[#CC0022]">お見積もり</span>
+            </h2>
+            <p class="text-lg text-gray-600 mb-8 max-w-xl">
+              お客様に最適な火災保険のお見積りを作成するため、簡単な情報のご入力をお願いいたします。
+            </p>
+            <div class="bg-white p-6 rounded-lg shadow-md border border-gray-200 text-left w-full max-w-md">
+              <h3 class="text-xl font-semibold text-gray-800 mb-4">お客様へのお願い</h3>
+              <ul class="list-disc list-inside text-gray-700 space-y-2">
+                <li>この情報シートは、保険の対象となる物件やご希望の補償内容についてお伺いするものです。</li>
+                <li>「新規受付票」にご記入いただいたお客様情報・ご家族構成とあわせて、お見積りを作成いたします。</li>
+                <li>お手数ですが、できる限り正確にご記入いただきますようお願いいたします。</li>
+                <li>ご不明な点がございましたら、お気軽にお申し付けください。</li>
+                <li>※本シートは、2025年9月1日以降に保険始期日を迎える損害保険ジャパン「THEすまいの保険」の最新情報に基づいています。</li>
+              </ul>
+            </div>
+          </div>
+        `;
+      }
+
+      // 1. 保険の対象となる物件の情報 - 建物について
+      function renderBuildingInfoForm() {
+        const contentEl = document.getElementById('app-content');
+        contentEl.innerHTML = `
+          <div class="p-6 bg-white rounded-lg shadow-md border border-gray-200">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">1. 保険の対象となる物件の情報 - 建物について</h2>
+
+            <!-- Header fields moved to here for PDF output -->
+            <div class="mb-8 p-6 bg-red-100 rounded-lg text-red-800 border border-red-200 section-highlight-red">
+                <p class="mb-4 text-center">
+                    取扱代理店名: リバティ保険ショップ ([宇都宮店/宇都宮南店])
+                </p>
+                <p class="mb-4 text-center">
+                    参照書類: 新規受付票(受付日: 西暦<input type="number" id="receptionYear" name="receptionYear" value="${formData.receptionYear}" class="form-input inline-block w-20 text-center mx-1" placeholder="YYYY">年
+                    <input type="number" id="receptionMonth" name="receptionMonth" value="${formData.receptionMonth}" class="form-input inline-block w-16 text-center mx-1" placeholder="MM">月
+                    <input type="number" id="receptionDay" name="receptionDay" value="${formData.receptionDay}" class="form-input inline-block w-16 text-center mx-1" placeholder="DD">日)
+                </p>
+                <p class="text-center font-semibold">お客さまの氏名: <input type="text" id="customerName" name="customerName" value="${formData.customerName}" class="form-input inline-block w-48 text-center mx-1" placeholder="お名前"> 様</p>
+            </div>
+
+            <div class="mb-6">
+              <label class="block text-gray-700 text-lg font-medium mb-3">物件所在地</label>
+              <div class="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-6">
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="propertyLocationSameAsReception" value="受付票記載のご住所と同じ" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.propertyLocationSameAsReception === '受付票記載のご住所と同じ' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">受付票記載のご住所と同じ</span>
+                </label>
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="propertyLocationSameAsReception" value="異なる" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.propertyLocationSameAsReception === '異なる' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">異なる</span>
+                </label>
+              </div>
+              <div id="property-location-fields" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 mt-4 ${formData.propertyLocationSameAsReception === '異なる' ? '' : 'hidden'}">
+                <div>
+                  <label for="propertyLocationPostalCode" class="block text-sm font-medium text-gray-700 mb-1">郵便番号</label>
+                  <input type="text" id="propertyLocationPostalCode" name="propertyLocationPostalCode" value="${formData.propertyLocationPostalCode}" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]" placeholder="例: 123-4567">
+                </div>
+                <div>
+                  <label for="propertyLocationAddress" class="block text-sm font-medium text-gray-700 mb-1">都道府県から正確にご記入ください</label>
+                  <input type="text" id="propertyLocationAddress" name="propertyLocationAddress" value="${formData.propertyLocationAddress}" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]" placeholder="例: 栃木県宇都宮市...">
+                </div>
+              </div>
+            </div>
+
+            <div class="mb-6">
+              <label class="block text-gray-700 text-lg font-medium mb-3">建物区分</label>
+              <div class="flex flex-col space-y-2">
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="buildingCategory" value="戸建住宅" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.buildingCategory === '戸建住宅' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">戸建住宅</span>
+                </label>
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="buildingCategory" value="分譲マンション(住戸部分)" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.buildingCategory === '分譲マンション(住戸部分)' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">分譲マンション(住戸部分)</span>
+                </label>
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="buildingCategory" value="その他" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.buildingCategory === 'その他' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">その他</span>
+                  <input type="text" id="buildingCategoryOther" name="buildingCategoryOther" value="${formData.buildingCategoryOther}" class="ml-2 px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022] w-48 ${formData.buildingCategory === 'その他' ? '' : 'hidden'}" placeholder="詳細">
+                </label>
+              </div>
+              <p class="text-sm text-gray-600 mt-2">※不明な場合は、建築確認申請書等でご確認ください</p>
+            </div>
+
+            <div class="mb-6">
+              <label class="block text-gray-700 text-lg font-medium mb-3">建物構造</label>
+              <div class="flex flex-col space-y-2">
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="buildingStructure" value="M構造(マンション構造)" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.buildingStructure === 'M構造(マンション構造)' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">M構造(マンション構造)</span>
+                  <p class="ml-2 text-sm text-gray-600">鉄筋コンクリート造、鉄骨鉄筋コンクリート造など</p>
+                </label>
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="buildingStructure" value="T構造(耐火構造)" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.buildingStructure === 'T構造(耐火構造)' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">T構造(耐火構造)</span>
+                  <p class="ml-2 text-sm text-gray-600">木造軸組工法で耐火性能が高い建物など</p>
+                </label>
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="buildingStructure" value="H構造(非耐火構造)" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.buildingStructure === 'H構造(非耐火構造)' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">H構造(非耐火構造)</span>
+                  <p class="ml-2 text-sm text-gray-600">上記以外の木造建物など</p>
+                </label>
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="buildingStructure" value="その他" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.buildingStructure === 'その他' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">その他</span>
+                  <input type="text" id="buildingStructureOther" name="buildingStructureOther" value="${formData.buildingStructureOther}" class="ml-2 px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022] w-48 ${formData.buildingStructure === 'その他' ? '' : 'hidden'}" placeholder="詳細">
+                </label>
+              </div>
+              <p class="text-sm text-gray-600 mt-2">※不明な場合は、建築確認申請書等でご確認ください</p>
+            </div>
+
+            <div class="mb-6">
+              <label class="block text-gray-700 text-lg font-medium mb-3">建築年月</label>
+              <div class="flex items-center space-x-2">
+                <input type="number" id="constructionYear" name="constructionYear" value="${formData.constructionYear}" class="w-24 px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]" placeholder="YYYY">
+                <span>年</span>
+                <input type="number" id="constructionMonth" name="constructionMonth" value="${formData.constructionMonth}" class="w-20 px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]" placeholder="MM">
+                <span>月築</span>
+              </div>
+            </div>
+
+            <div class="mb-6 ${formData.buildingCategory === '戸建住宅' ? '' : 'hidden'}" id="total-floor-area-section">
+              <label class="block text-gray-700 text-lg font-medium mb-3">延床面積(建物全体)</label>
+              <div class="flex items-center space-x-2">
+                <input type="number" id="totalFloorArea" name="totalFloorArea" value="${formData.totalFloorArea}" class="w-24 px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]">
+                <span>m<sup>2</sup> (約</span>
+                <input type="number" id="totalFloorAreaTsubo" name="totalFloorAreaTsubo" value="${formData.totalFloorAreaTsubo}" class="w-24 px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]">
+                <span>坪)</span>
+              </div>
+            </div>
+
+            <div class="mb-6 ${formData.buildingCategory === '分譲マンション(住戸部分)' ? '' : 'hidden'}" id="exclusive-area-section">
+              <label class="block text-gray-700 text-lg font-medium mb-3">専有面積(マンション戸室)</label>
+              <div class="flex items-center space-x-2">
+                <input type="number" id="exclusiveArea" name="exclusiveArea" value="${formData.exclusiveArea}" class="w-24 px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]">
+                <span>m<sup>2</sup> (約</span>
+                <input type="number" id="exclusiveAreaTsubo" name="exclusiveAreaTsubo" value="${formData.exclusiveAreaTsubo}" class="w-24 px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]">
+                <span>坪)</span>
+              </div>
+            </div>
+
+            <div class="mb-6">
+              <label class="block text-gray-700 text-lg font-medium mb-3">建物所有者</label>
+              <div class="flex flex-col space-y-2">
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="buildingOwner" value="受付票記載のご本人" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.buildingOwner === '受付票記載のご本人' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">受付票記載のご本人</span>
+                </label>
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="buildingOwner" value="配偶者" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.buildingOwner === '配偶者' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">配偶者</span>
+                </label>
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="buildingOwner" value="その他" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.buildingOwner === 'その他' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">その他</span>
+                  <input type="text" id="buildingOwnerOtherRelationship" name="buildingOwnerOtherRelationship" value="${formData.buildingOwnerOtherRelationship}" class="ml-2 px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022] w-32 ${formData.buildingOwner === 'その他' ? '' : 'hidden'}" placeholder="続柄">
+                  <input type="text" id="buildingOwnerOtherName" name="buildingOwnerOtherName" value="${formData.buildingOwnerOtherName}" class="ml-2 px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022] w-48 ${formData.buildingOwner === 'その他' ? '' : 'hidden'}" placeholder="氏名">
+                </label>
+              </div>
+            </div>
+
+            <div class="mb-6">
+              <label class="block text-gray-700 text-lg font-medium mb-3">建物の使用状況</label>
+              <div class="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-6">
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="buildingUsage" value="専用住宅" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.buildingUsage === '専用住宅' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">専用住宅</span>
+                </label>
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="buildingUsage" value="店舗等併用住宅" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.buildingUsage === '店舗等併用住宅' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">店舗等併用住宅</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="mb-6">
+              <label class="block text-gray-700 text-lg font-medium mb-3">耐震診断の有無・結果</label>
+              <div class="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-6">
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="seismicDiagnosis" value="受けたことがある" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.seismicDiagnosis === '受けたことがある' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">受けたことがある</span>
+                </label>
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="seismicDiagnosis" value="受けたことがない" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.seismicDiagnosis === '受けたことがない' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">受けたことがない</span>
+                </label>
+              </div>
+              <p class="text-sm text-gray-600 mt-2">結果がわかる書類があればご準備ください</p>
+              <div id="seismic-diagnosis-result-field" class="mt-4 ${formData.seismicDiagnosis === '受けたことがある' ? '' : 'hidden'}">
+                  <label for="seismicDiagnosisResult" class="block text-sm font-medium text-gray-700 mb-1">診断結果</label>
+                  <input type="text" id="seismicDiagnosisResult" name="seismicDiagnosisResult" value="${formData.seismicDiagnosisResult}" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]" placeholder="診断結果をご記入ください">
+              </div>
+            </div>
+
+            <div class="mb-6 ${formData.buildingCategory === '戸建住宅' ? '' : 'hidden'}" id="special-foundation-structure-section">
+              <label class="block text-gray-700 text-lg font-medium mb-3">(戸建の場合) 特殊な基礎・構造ですか?</label>
+              <div class="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-6">
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="specialFoundationStructure" value="はい" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.specialFoundationStructure === 'はい' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">はい</span>
+                </label>
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="specialFoundationStructure" value="いいえ" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.specialFoundationStructure === 'いいえ' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">いいえ</span>
+                </label>
+              </div>
+              <p class="text-sm text-gray-600 mt-2">例:高床式、地下室あり等具体</p>
+              <div id="special-foundation-structure-details-field" class="mt-4 ${formData.specialFoundationStructure === 'はい' ? '' : 'hidden'}">
+                  <label for="specialFoundationStructureDetails" class="block text-sm font-medium text-gray-700 mb-1">具体例</label>
+                  <input type="text" id="specialFoundationStructureDetails" name="specialFoundationStructureDetails" value="${formData.specialFoundationStructureDetails}" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]" placeholder="具体例をご記入ください">
+              </div>
+            </div>
+
+          </div>
+        `;
+
+        // イベントリスナーの設定
+        contentEl.querySelectorAll('input[name="receptionYear"], input[name="receptionMonth"], input[name="receptionDay"], input[name="customerName"]').forEach(input => {
+            input.addEventListener('input', (e) => updateFormDataAndRender(e.target.name, e.target.value));
+        });
+
+        contentEl.querySelectorAll('input[name="propertyLocationSameAsReception"]').forEach(input => {
+          input.addEventListener('change', (e) => {
+            const val = e.target.value;
+            updateFormDataAndRender('propertyLocationSameAsReception', val);
+            document.getElementById('property-location-fields').classList.toggle('hidden', val !== '異なる');
+            if (val === '受付票記載のご住所と同じ') {
+                updateFormDataAndRender({propertyLocationPostalCode: '', propertyLocationAddress: ''});
+            }
+          });
+        });
+
+        contentEl.querySelectorAll('input[name="buildingCategory"]').forEach(input => {
+          input.addEventListener('change', (e) => {
+            const val = e.target.value;
+            updateFormDataAndRender('buildingCategory', val);
+            document.getElementById('buildingCategoryOther').classList.toggle('hidden', val !== 'その他');
+            document.getElementById('total-floor-area-section').classList.toggle('hidden', val !== '戸建住宅');
+            document.getElementById('exclusive-area-section').classList.toggle('hidden', val !== '分譲マンション(住戸部分)');
+            document.getElementById('special-foundation-structure-section').classList.toggle('hidden', val !== '戸建住宅');
+
+            if (val !== 'その他') updateFormDataAndRender('buildingCategoryOther', '');
+            if (val !== '戸建住宅') updateFormDataAndRender({totalFloorArea: '', totalFloorAreaTsubo: '', specialFoundationStructure: '', specialFoundationStructureDetails: ''});
+            if (val !== '分譲マンション(住戸部分)') updateFormDataAndRender({exclusiveArea: '', exclusiveAreaTsubo: ''});
+          });
+        });
+
+        contentEl.querySelectorAll('input[name="buildingStructure"]').forEach(input => {
+          input.addEventListener('change', (e) => {
+            const val = e.target.value;
+            updateFormDataAndRender('buildingStructure', val);
+            document.getElementById('buildingStructureOther').classList.toggle('hidden', val !== 'その他');
+            if (val !== 'その他') updateFormDataAndRender('buildingStructureOther', '');
+          });
+        });
+
+        contentEl.querySelectorAll('input[name="buildingOwner"]').forEach(input => {
+          input.addEventListener('change', (e) => {
+            const val = e.target.value;
+            updateFormDataAndRender('buildingOwner', val);
+            document.getElementById('buildingOwnerOtherRelationship').classList.toggle('hidden', val !== 'その他');
+            document.getElementById('buildingOwnerOtherName').classList.toggle('hidden', val !== 'その他');
+            if (val !== 'その他') updateFormDataAndRender({buildingOwnerOtherRelationship: '', buildingOwnerOtherName: ''});
+          });
+        });
+
+        contentEl.querySelectorAll('input[name="seismicDiagnosis"]').forEach(input => {
+            input.addEventListener('change', (e) => {
+                const val = e.target.value;
+                updateFormDataAndRender('seismicDiagnosis', val);
+                document.getElementById('seismic-diagnosis-result-field').classList.toggle('hidden', val !== '受けたことがある');
+                if (val !== '受けたことがある') updateFormDataAndRender('seismicDiagnosisResult', '');
+            });
+        });
+
+        contentEl.querySelectorAll('input[name="specialFoundationStructure"]').forEach(input => {
+            input.addEventListener('change', (e) => {
+                const val = e.target.value;
+                updateFormDataAndRender('specialFoundationStructure', val);
+                document.getElementById('special-foundation-structure-details-field').classList.toggle('hidden', val !== 'はい');
+                if (val !== 'はい') updateFormDataAndRender('specialFoundationStructureDetails', '');
+            });
+        });
+
+        contentEl.querySelectorAll('input[type="text"], input[type="number"]').forEach(input => {
+          input.addEventListener('input', (e) => updateFormDataAndRender(e.target.name, e.target.value));
+        });
+
+        // 初回レンダリング時の表示制御
+        document.getElementById('property-location-fields').classList.toggle('hidden', formData.propertyLocationSameAsReception !== '異なる');
+        document.getElementById('buildingCategoryOther').classList.toggle('hidden', formData.buildingCategory !== 'その他');
+        document.getElementById('buildingStructureOther').classList.toggle('hidden', formData.buildingStructure !== 'その他');
+        document.getElementById('buildingOwnerOtherRelationship').classList.toggle('hidden', formData.buildingOwner !== 'その他');
+        document.getElementById('buildingOwnerOtherName').classList.toggle('hidden', formData.buildingOwner !== 'その他');
+        document.getElementById('total-floor-area-section').classList.toggle('hidden', formData.buildingCategory !== '戸建住宅');
+        document.getElementById('exclusive-area-section').classList.toggle('hidden', formData.buildingCategory !== '分譲マンション(住戸部分)');
+        document.getElementById('special-foundation-structure-section').classList.toggle('hidden', formData.buildingCategory !== '戸建住宅');
+        document.getElementById('seismic-diagnosis-result-field').classList.toggle('hidden', formData.seismicDiagnosis !== '受けたことがある');
+        document.getElementById('special-foundation-structure-details-field').classList.toggle('hidden', formData.specialFoundationStructure !== 'はい');
+      }
+
+      // 1. 保険の対象となる物件の情報 - 家財について
+      function renderHouseholdInfoForm() {
+        const contentEl = document.getElementById('app-content');
+        contentEl.innerHTML = `
+          <div class="p-6 bg-white rounded-lg shadow-md border border-gray-200">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">1. 保険の対象となる物件の情報 - 家財について</h2>
+            <p class="text-gray-600 mb-4 text-sm">※「新規ご来店受付票」の「現在の保険の加入状況」で火災保険(家財)に「相談希望」とあった場合や、新たにご希望の場合にご記入ください。</p>
+
+            <div class="mb-6">
+              <label class="block text-gray-700 text-lg font-medium mb-3">家財を保険の対象にしますか？</label>
+              <div class="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-6">
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="insureHouseholdGoods" value="はい" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.insureHouseholdGoods === 'はい' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">はい</span>
+                </label>
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="insureHouseholdGoods" value="いいえ" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.insureHouseholdGoods === 'いいえ' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">いいえ</span>
+                </label>
+              </div>
+            </div>
+
+            <div id="household-details-section" class="${formData.insureHouseholdGoods === 'はい' ? '' : 'hidden'}">
+              <div class="mb-6">
+                <label for="householdHeadAge" class="block text-gray-700 text-lg font-medium mb-3">世帯主様の年齢</label>
+                <div class="flex items-center space-x-2">
+                  <input type="number" id="householdHeadAge" name="householdHeadAge" value="${formData.householdHeadAge}" class="w-24 px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]">
+                  <span>歳</span>
+                </div>
+              </div>
+
+              <div class="mb-6">
+                <label class="block text-gray-700 text-lg font-medium mb-3">高額な貴金属・美術品等はありますか?</label>
+                <div class="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-6">
+                  <label class="inline-flex items-center cursor-pointer">
+                    <input type="radio" name="hasValuableItems" value="はい" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.hasValuableItems === 'はい' ? 'checked' : ''}>
+                    <span class="ml-3 text-lg text-gray-800">はい</span>
+                  </label>
+                  <label class="inline-flex items-center cursor-pointer">
+                    <input type="radio" name="hasValuableItems" value="いいえ" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.hasValuableItems === 'いいえ' ? 'checked' : ''}>
+                    <span class="ml-3 text-lg text-gray-800">いいえ</span>
+                  </label>
+                </div>
+                <p class="text-sm text-gray-600 mt-2">30万円を超えるものは明記が必要な場合があります</p>
+              </div>
+            </div>
+          </div>
+        `;
+
+        // イベントリスナーの設定
+        contentEl.querySelectorAll('input[name="insureHouseholdGoods"]').forEach(input => {
+          input.addEventListener('change', (e) => {
+            const val = e.target.value;
+            updateFormDataAndRender('insureHouseholdGoods', val);
+            document.getElementById('household-details-section').classList.toggle('hidden', val !== 'はい');
+            if (val === 'いいえ') {
+                updateFormDataAndRender({householdHeadAge: '', hasValuableItems: ''});
+            }
+          });
+        });
+
+        contentEl.querySelectorAll('input[type="number"], input[name="hasValuableItems"]').forEach(input => {
+          input.addEventListener('input', (e) => updateFormDataAndRender(e.target.name, e.target.value));
+          input.addEventListener('change', (e) => updateFormDataAndRender(e.target.name, e.target.value)); // For radio buttons
+        });
+
+        // 初回レンダリング時の表示制御
+        document.getElementById('household-details-section').classList.toggle('hidden', formData.insureHouseholdGoods !== 'はい');
+      }
+
+      // 2. ご希望の補償内容 - 保険金額
+      function renderCoverageAmountForm() {
+        const contentEl = document.getElementById('app-content');
+        contentEl.innerHTML = `
+          <div class="p-6 bg-white rounded-lg shadow-md border border-gray-200">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">2. ご希望の補償内容 - 保険金額(ご契約金額)</h2>
+
+            <div class="mb-6">
+              <label for="desiredBuildingInsuranceAmount" class="block text-gray-700 text-lg font-medium mb-3">建物のご希望の保険金額</label>
+              <div class="flex items-center space-x-2">
+                <input type="number" id="desiredBuildingInsuranceAmount" name="desiredBuildingInsuranceAmount" value="${formData.desiredBuildingInsuranceAmount}" class="w-32 px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]">
+                <span>万円</span>
+              </div>
+              <p class="text-sm text-gray-600 mt-2">新築時の価格、現在の再調達価額など</p>
+            </div>
+
+            <div class="mb-6 ${formData.insureHouseholdGoods === 'はい' ? '' : 'hidden'}" id="desired-household-insurance-amount-section">
+              <label for="desiredHouseholdInsuranceAmount" class="block text-gray-700 text-lg font-medium mb-3">家財のご希望の保険金額</label>
+              <div class="flex items-center space-x-2">
+                <input type="number" id="desiredHouseholdInsuranceAmount" name="desiredHouseholdInsuranceAmount" value="${formData.desiredHouseholdInsuranceAmount}" class="w-32 px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]">
+                <span>万円</span>
+              </div>
+              <p class="text-sm text-gray-600 mt-2">ご家族構成や延床面積に応じた家財評価額の目安をご案内できます。</p>
+            </div>
+
+            <div class="mb-6">
+              <label class="block text-gray-700 text-lg font-medium mb-3">建物の自己負担額(免責金額)</label>
+              <div class="flex flex-wrap gap-4">
+                ${['0円', '1万円', '3万円', '5万円', '10万円'].map(amount => `
+                  <label class="flex items-center px-4 py-2 border rounded-full cursor-pointer transition-colors duration-200 ${formData.buildingDeductible === amount ? 'bg-[#CC0022] text-white border-[#CC0022] shadow-md' : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'}">
+                    <input type="radio" name="buildingDeductible" value="${amount}" class="hidden" ${formData.buildingDeductible === amount ? 'checked' : ''}>
+                    <span class="font-semibold">${amount}</span>
+                  </label>
+                `).join('')}
+              </div>
+            </div>
+
+            <div class="mb-6 ${formData.insureHouseholdGoods === 'はい' ? '' : 'hidden'}" id="household-deductible-section">
+              <label class="block text-gray-700 text-lg font-medium mb-3">家財の自己負担額(免責金額)</label>
+              <div class="flex flex-wrap gap-4">
+                ${['0円', '1万円', '3万円', '5万円', '10万円'].map(amount => `
+                  <label class="flex items-center px-4 py-2 border rounded-full cursor-pointer transition-colors duration-200 ${formData.householdDeductible === amount ? 'bg-[#CC0022] text-white border-[#CC0022] shadow-md' : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'}">
+                    <input type="radio" name="householdDeductible" value="${amount}" class="hidden" ${formData.householdDeductible === amount ? 'checked' : ''}>
+                    <span class="font-semibold">${amount}</span>
+                  </label>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+
+        // イベントリスナーの設定
+        contentEl.querySelectorAll('input[name="desiredBuildingInsuranceAmount"], input[name="desiredHouseholdInsuranceAmount"]').forEach(input => {
+          input.addEventListener('input', (e) => updateFormDataAndRender(e.target.name, e.target.value));
+        });
+
+        contentEl.querySelectorAll('input[name="buildingDeductible"], input[name="householdDeductible"]').forEach(input => {
+          input.addEventListener('change', (e) => updateFormDataAndRender(e.target.name, e.target.value));
+        });
+
+        // 初回レンダリング時の表示制御
+        document.getElementById('desired-household-insurance-amount-section').classList.toggle('hidden', formData.insureHouseholdGoods !== 'はい');
+        document.getElementById('household-deductible-section').classList.toggle('hidden', formData.insureHouseholdGoods !== 'はい');
+      }
+
+      // 2. ご希望の補償内容 - 保険期間
+      function renderInsurancePeriodForm() {
+        const contentEl = document.getElementById('app-content');
+        contentEl.innerHTML = `
+          <div class="p-6 bg-white rounded-lg shadow-md border border-gray-200">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">2. ご希望の補償内容 - 保険期間</h2>
+
+            <div class="mb-6">
+              <label class="block text-gray-700 text-lg font-medium mb-3">ご希望の保険期間</label>
+              <div class="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-6">
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="desiredInsurancePeriodYears" value="1年" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.desiredInsurancePeriodYears === '1年' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">1年</span>
+                </label>
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="desiredInsurancePeriodYears" value="複数年" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.desiredInsurancePeriodYears === '複数年' ? 'checked' : ''}>
+                  <span class="ml-3 text-lg text-gray-800">複数年 (最長5年)</span>
+                </label>
+              </div>
+              <div id="desired-insurance-period-custom-field" class="mt-4 ${formData.desiredInsurancePeriodYears === '複数年' ? '' : 'hidden'}">
+                <label for="desiredInsurancePeriodCustom" class="block text-sm font-medium text-gray-700 mb-1">年数</label>
+                <input type="number" id="desiredInsurancePeriodCustom" name="desiredInsurancePeriodCustom" value="${formData.desiredInsurancePeriodCustom}" min="2" max="5" class="w-24 px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]">
+                <span>年</span>
+              </div>
+            </div>
+
+            <div class="mb-6">
+              <label for="insuranceStartDate" class="block text-gray-700 text-lg font-medium mb-3">保険始期(開始日)</label>
+              <input type="date" id="insuranceStartDate" name="insuranceStartDate" value="${formData.insuranceStartDate}" class="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022] text-lg">
+            </div>
+          </div>
+        `;
+
+        // イベントリスナーの設定
+        contentEl.querySelectorAll('input[name="desiredInsurancePeriodYears"]').forEach(input => {
+          input.addEventListener('change', (e) => {
+            const val = e.target.value;
+            updateFormDataAndRender('desiredInsurancePeriodYears', val);
+            document.getElementById('desired-insurance-period-custom-field').classList.toggle('hidden', val !== '複数年');
+            if (val === '1年') {
+                updateFormDataAndRender('desiredInsurancePeriodCustom', '');
+            }
+          });
+        });
+
+        contentEl.querySelectorAll('input[name="desiredInsurancePeriodCustom"], input[name="insuranceStartDate"]').forEach(input => {
+          input.addEventListener('input', (e) => updateFormDataAndRender(e.target.name, e.target.value));
+        });
+
+        // 初回レンダリング時の表示制御
+        document.getElementById('desired-insurance-period-custom-field').classList.toggle('hidden', formData.desiredInsurancePeriodYears !== '複数年');
+      }
+
+      // 2. ご希望の補償内容 - 基本補償・主な費用保険金・地震保険・特約
+      function renderCoverageDetailsForm() {
+        const contentEl = document.getElementById('app-content');
+        contentEl.innerHTML = `
+          <div class="p-6 bg-white rounded-lg shadow-md border border-gray-200">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">2. ご希望の補償内容 - 基本補償・主な費用保険金・地震保険・特約</h2>
+
+            <!-- (3)基本補償 -->
+            <div class="mb-8 p-6 border border-gray-300 rounded-lg bg-gray-50">
+              <h3 class="text-xl font-bold text-gray-800 mb-4">(3)基本補償 (「THE すまいの保険」の場合の主な補償範囲)</h3>
+
+              <div class="mb-6">
+                <label class="block text-gray-700 text-lg font-medium mb-3">ご希望のプランをお選びください</label>
+                <div class="flex flex-col space-y-3">
+                  <label class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors duration-200 ${formData.selectedPlan === 'スリムプラン' ? 'bg-red-50 border-[#CC0022] ring-2 ring-[#CC0022]' : 'bg-white border-gray-300 hover:border-gray-400'}">
+                    <input type="radio" name="selectedPlan" value="スリムプラン" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.selectedPlan === 'スリムプラン' ? 'checked' : ''}>
+                    <span class="ml-3 text-lg text-gray-800">スリムプラン</span>
+                    <p class="ml-auto text-sm text-gray-600">火災や自然災害をメインにカバーしたい (盗難や水濡れ、破損・汚損などの損害は含まれません。)</p>
+                  </label>
+                  <label class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors duration-200 ${formData.selectedPlan === 'ベーシック(II型)プラン' ? 'bg-red-50 border-[#CC0022] ring-2 ring-[#CC0022]' : 'bg-white border-gray-300 hover:border-gray-400'}">
+                    <input type="radio" name="selectedPlan" value="ベーシック(II型)プラン" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.selectedPlan === 'ベーシック(II型)プラン' ? 'checked' : ''}>
+                    <span class="ml-3 text-lg text-gray-800">ベーシック(II型)プラン</span>
+                    <p class="ml-auto text-sm text-gray-600">自然災害や盗難による損害をカバーしたい (破損・汚損などの損害は含まれません。)</p>
+                  </label>
+                  <label class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors duration-200 ${formData.selectedPlan === 'ベーシック(I型)プラン' ? 'bg-red-50 border-[#CC0022] ring-2 ring-[#CC0022]' : 'bg-white border-gray-300 hover:border-gray-400'}">
+                    <input type="radio" name="selectedPlan" value="ベーシック(I型)プラン" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.selectedPlan === 'ベーシック(I型)プラン' ? 'checked' : ''}>
+                    <span class="ml-3 text-lg text-gray-800">ベーシック(I型)プラン</span>
+                    <p class="ml-auto text-sm text-gray-600">幅広い補償で安心したい (日常生活の思いもよらぬ事故による損害も補償します。)</p>
+                  </label>
+                </div>
+                <p class="text-sm text-gray-600 mt-2">※各プランの詳細は代理店スタッフにご確認ください。</p>
+              </div>
+
+              <h4 class="text-lg font-semibold text-gray-800 mt-6 mb-4">補償内容</h4>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                <div class="flex items-center">
+                  <input type="checkbox" name="coverageFireLightningExplosion" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" checked disabled>
+                  <span class="ml-3 text-gray-800 font-medium">火災、落雷、破裂・爆発</span>
+                  <span class="ml-auto text-sm text-gray-600">基本補償に含まれます</span>
+                </div>
+                <div class="flex items-center">
+                  <input type="checkbox" name="coverageWindHailSnow" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" checked disabled>
+                  <span class="ml-3 text-gray-800 font-medium">風災、雹(ひょう)災、雪災</span>
+                  <span class="ml-auto text-sm text-gray-600">基本補償に含まれます</span>
+                </div>
+                <div class="flex items-start">
+                  <label class="inline-flex items-center cursor-pointer mt-1">
+                    <input type="checkbox" name="coverageWaterDamage" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.coverageWaterDamage ? 'checked' : ''}>
+                    <span class="ml-3 text-gray-800 font-medium">水濡れ</span>
+                  </label>
+                  <div class="ml-auto flex flex-col items-end">
+                    <div class="flex items-center mb-1 ${formData.coverageWaterDamage ? '' : 'hidden'}" id="water-damage-deductible-field">
+                      <span class="text-sm text-gray-600 mr-2">自己負担額:</span>
+                      <select name="coverageWaterDamageDeductible" class="px-2 py-1 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]">
+                        <option value="">選択してください</option>
+                        <option value="0円" ${formData.coverageWaterDamageDeductible === '0円' ? 'selected' : ''}>0円</option>
+                        <option value="1万円" ${formData.coverageWaterDamageDeductible === '1万円' ? 'selected' : ''}>1万円</option>
+                        <option value="3万円" ${formData.coverageWaterDamageDeductible === '3万円' ? 'selected' : ''}>3万円</option>
+                        <option value="5万円" ${formData.coverageWaterDamageDeductible === '5万円' ? 'selected' : ''}>5万円</option>
+                        <option value="10万円" ${formData.coverageWaterDamageDeductible === '10万円' ? 'selected' : ''}>10万円</option>
+                      </select>
+                    </div>
+                    <p class="text-sm text-gray-600 text-right">給排水設備の事故、他の戸室で生じた事故による水濡れ損害など</p>
+                  </div>
+                </div>
+                <div class="flex items-start">
+                  <label class="inline-flex items-center cursor-pointer mt-1">
+                    <input type="checkbox" name="coverageTheft" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.coverageTheft ? 'checked' : ''}>
+                    <span class="ml-3 text-gray-800 font-medium">盗難</span>
+                  </label>
+                  <div class="ml-auto flex flex-col items-end">
+                    <div class="flex items-center mb-1 ${formData.coverageTheft ? '' : 'hidden'}" id="theft-deductible-field">
+                      <span class="text-sm text-gray-600 mr-2">自己負担額:</span>
+                      <select name="coverageTheftDeductible" class="px-2 py-1 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]">
+                        <option value="">選択してください</option>
+                        <option value="0円" ${formData.coverageTheftDeductible === '0円' ? 'selected' : ''}>0円</option>
+                        <option value="1万円" ${formData.coverageTheftDeductible === '1万円' ? 'selected' : ''}>1万円</option>
+                        <option value="3万円" ${formData.coverageTheftDeductible === '3万円' ? 'selected' : ''}>3万円</option>
+                        <option value="5万円" ${formData.coverageTheftDeductible === '5万円' ? 'selected' : ''}>5万円</option>
+                        <option value="10万円" ${formData.coverageTheftDeductible === '10万円' ? 'selected' : ''}>10万円</option>
+                      </select>
+                    </div>
+                    <p class="text-sm text-gray-600 text-right">強盗・窃盗(未遂含む)による盗取・汚損・損傷</p>
+                  </div>
+                </div>
+                <div class="flex items-start">
+                  <label class="inline-flex items-center cursor-pointer mt-1">
+                    <input type="checkbox" name="coverageFloodDamage" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.coverageFloodDamage ? 'checked' : ''}>
+                    <span class="ml-3 text-gray-800 font-medium">水災</span>
+                  </label>
+                  <p class="ml-auto text-sm text-gray-600 max-w-xs text-right">台風・豪雨等による洪水・高潮・土砂崩れ等。お住まいの地域のハザードマップもご確認ください。</p>
+                </div>
+                <div class="flex items-start">
+                  <label class="inline-flex items-center cursor-pointer mt-1">
+                    <input type="checkbox" name="coverageAccidentalDamage" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.coverageAccidentalDamage ? 'checked' : ''}>
+                    <span class="ml-3 text-gray-800 font-medium">破損・汚損等</span>
+                  </label>
+                  <div class="ml-auto flex flex-col items-end">
+                    <div class="flex items-center mb-1 ${formData.coverageAccidentalDamage ? '' : 'hidden'}" id="accidental-damage-deductible-field">
+                      <span class="text-sm text-gray-600 mr-2">自己負担額:</span>
+                      <select name="coverageAccidentalDamageDeductible" class="px-2 py-1 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]">
+                        <option value="">選択してください</option>
+                        <option value="0円" ${formData.coverageAccidentalDamageDeductible === '0円' ? 'selected' : ''}>0円</option>
+                        <option value="1万円" ${formData.coverageAccidentalDamageDeductible === '1万円' ? 'selected' : ''}>1万円</option>
+                        <option value="3万円" ${formData.coverageAccidentalDamageDeductible === '3万円' ? 'selected' : ''}>3万円</option>
+                        <option value="5万円" ${formData.coverageAccidentalDamageDeductible === '5万円' ? 'selected' : ''}>5万円</option>
+                        <option value="10万円" ${formData.coverageAccidentalDamageDeductible === '10万円' ? 'selected' : ''}>10万円</option>
+                      </select>
+                    </div>
+                    <p class="text-sm text-gray-600 text-right">不測かつ突発的な事故による損害(自己負担額あり)</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- (4)主な費用保険金 -->
+            <div class="mb-8 p-6 border border-gray-300 rounded-lg bg-gray-50">
+              <h3 class="text-xl font-bold text-gray-800 mb-4">(4)主な費用保険金 (自動セットまたは任意追加)</h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                <div class="flex items-center">
+                  <input type="checkbox" name="expenseRemainingPropertyClearance" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" checked disabled>
+                  <span class="ml-3 text-gray-800 font-medium">残存物取片づけ費用</span>
+                  <span class="ml-auto text-sm text-gray-600">(自動セット)</span>
+                </div>
+                <div class="flex items-center">
+                  <input type="checkbox" name="expenseDamageScopeConfirmation" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" checked disabled>
+                  <span class="ml-3 text-gray-800 font-medium">損害範囲確定費用</span>
+                  <span class="ml-auto text-sm text-gray-600">(自動セット)</span>
+                </div>
+                <div class="flex items-center">
+                  <input type="checkbox" name="expenseTemporaryRepair" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" checked disabled>
+                  <span class="ml-3 text-gray-800 font-medium">仮修理費用</span>
+                  <span class="ml-auto text-sm text-gray-600">(自動セット)</span>
+                </div>
+                <div class="flex items-center">
+                  <input type="checkbox" name="expenseRestorationIncidental" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" checked disabled>
+                  <span class="ml-3 text-gray-800 font-medium">復旧付随費用(仮住まい費用等含む)</span>
+                  <span class="ml-auto text-sm text-gray-600">(自動セット)</span>
+                </div>
+                <div class="flex items-start">
+                  <label class="inline-flex items-center cursor-pointer mt-1">
+                    <input type="checkbox" name="expenseEarthquakeFire" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.expenseEarthquakeFire ? 'checked' : ''}>
+                    <span class="ml-3 text-gray-800 font-medium">地震火災費用保険金</span>
+                  </label>
+                  <p class="ml-auto text-sm text-gray-600 max-w-xs text-right">地震保険とは別に、地震等を原因とする火災で建物が半焼以上等の場合に保険金額の5% (上限あり)をお支払い</p>
+                </div>
+                <div class="flex items-start">
+                  <label class="inline-flex items-center cursor-pointer mt-1">
+                    <input type="checkbox" name="expenseWaterPipeRepair" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.expenseWaterPipeRepair ? 'checked' : ''}>
+                    <span class="ml-3 text-gray-800 font-medium">水道管修理費用保険金</span>
+                  </label>
+                  <p class="ml-auto text-sm text-gray-600 max-w-xs text-right">凍結によって水道管が損壊し、修理した場合の費用(自己負担額あり)</p>
+                </div>
+                <div class="flex items-start">
+                  <label class="inline-flex items-center cursor-pointer mt-1">
+                    <input type="checkbox" name="expenseDoorLockReplacement" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.expenseDoorLockReplacement ? 'checked' : ''}>
+                    <span class="ml-3 text-gray-800 font-medium">ドアロック交換費用保険金</span>
+                  </label>
+                  <p class="ml-auto text-sm text-gray-600 max-w-xs text-right">盗難によりドアの鍵が盗まれた場合など</p>
+                </div>
+                <div class="flex items-start">
+                  <label class="inline-flex items-center cursor-pointer mt-1">
+                    <input type="checkbox" name="expenseTemporaryAllowance" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.expenseTemporaryAllowance ? 'checked' : ''}>
+                    <span class="ml-3 text-gray-800 font-medium">臨時費用保険金</span>
+                  </label>
+                  <p class="ml-auto text-sm text-gray-600 max-w-xs text-right">火災保険の損害保険金が支払われる場合に、損害保険金にプラスして支払われます。</p>
+                </div>
+                <div class="flex items-start">
+                  <input type="checkbox" name="expenseDamagePrevention" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" checked disabled>
+                  <span class="ml-3 text-gray-800 font-medium">損害防止費用</span>
+                  <p class="ml-auto text-sm text-gray-600 max-w-xs text-right">火災、落雷、破裂または爆発による損害の発生または拡大の防止のために支出した必要または有益な費用を支払います。</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- (5)地震保険 -->
+            <div class="mb-8 p-6 border border-gray-300 rounded-lg bg-gray-50">
+              <h3 class="text-xl font-bold text-gray-800 mb-4">(5)地震保険 (火災保険とセットでご加入いただきます)</h3>
+
+              <div class="mb-6">
+                <label class="block text-gray-700 text-lg font-medium mb-3">地震保険を付帯しますか?</label>
+                <div class="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-6">
+                  <label class="inline-flex items-center cursor-pointer">
+                    <input type="radio" name="addEarthquakeInsurance" value="はい" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.addEarthquakeInsurance === 'はい' ? 'checked' : ''}>
+                    <span class="ml-3 text-lg text-gray-800">はい</span>
+                  </label>
+                  <label class="inline-flex items-center cursor-pointer">
+                    <input type="radio" name="addEarthquakeInsurance" value="いいえ" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.addEarthquakeInsurance === 'いいえ' ? 'checked' : ''}>
+                    <span class="ml-3 text-lg text-gray-800">いいえ</span>
+                  </label>
+                </div>
+                <p class="text-sm text-gray-600 mt-2">地震・噴火・津波による損害は地震保険でないと補償されません</p>
+              </div>
+
+              <div id="earthquake-insurance-details" class="${formData.addEarthquakeInsurance === 'はい' ? '' : 'hidden'}">
+                <div class="mb-6">
+                  <label for="earthquakeBuildingInsuranceAmount" class="block text-gray-700 text-lg font-medium mb-3">保険金額(建物)</label>
+                  <div class="flex items-center space-x-2">
+                    <input type="number" id="earthquakeBuildingInsuranceAmount" name="earthquakeBuildingInsuranceAmount" value="${formData.earthquakeBuildingInsuranceAmount}" class="w-32 px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]">
+                    <span>万円</span>
+                    <p class="text-sm text-gray-600">(火災保険の保険金額の[30~50]%まで)</p>
+                  </div>
+                </div>
+
+                <div class="mb-6 ${formData.insureHouseholdGoods === 'はい' ? '' : 'hidden'}" id="earthquake-household-insurance-amount-section">
+                  <label for="earthquakeHouseholdInsuranceAmount" class="block text-gray-700 text-lg font-medium mb-3">保険金額(家財)</label>
+                  <div class="flex items-center space-x-2">
+                    <input type="number" id="earthquakeHouseholdInsuranceAmount" name="earthquakeHouseholdInsuranceAmount" value="${formData.earthquakeHouseholdInsuranceAmount}" class="w-32 px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]">
+                    <span>万円</span>
+                    <p class="text-sm text-gray-600">(火災保険の保険金額の[30~50]%まで)</p>
+                  </div>
+                </div>
+
+                <div class="mb-6">
+                  <label class="block text-gray-700 text-lg font-medium mb-3">建物の免震建築物割引・耐震等級割引等</label>
+                  <div class="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-6">
+                    <label class="inline-flex items-center cursor-pointer">
+                      <input type="radio" name="earthquakeDiscountApplicable" value="該当する(証明書類あり)" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.earthquakeDiscountApplicable === '該当する(証明書類あり)' ? 'checked' : ''}>
+                      <span class="ml-3 text-lg text-gray-800">該当する (証明書類あり)</span>
+                    </label>
+                    <label class="inline-flex items-center cursor-pointer">
+                      <input type="radio" name="earthquakeDiscountApplicable" value="該当しない" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.earthquakeDiscountApplicable === '該当しない' ? 'checked' : ''}>
+                      <span class="ml-3 text-lg text-gray-800">該当しない</span>
+                    </label>
+                    <label class="inline-flex items-center cursor-pointer">
+                      <input type="radio" name="earthquakeDiscountApplicable" value="不明" class="form-radio h-5 w-5 text-[#CC0022] border-gray-300 focus:ring-[#CC0022] rounded-full" ${formData.earthquakeDiscountApplicable === '不明' ? 'checked' : ''}>
+                      <span class="ml-3 text-lg text-gray-800">不明</span>
+                    </label>
+                  </div>
+                  <p class="text-sm text-gray-600 mt-2">該当する場合、保険料が割引かれます。確認書類 (写し)をご提出ください。</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- (6)特約 -->
+            <div class="p-6 border border-gray-300 rounded-lg bg-gray-50">
+              <h3 class="text-xl font-bold text-gray-800 mb-4">(6)特約 (ご希望に応じて追加できます)</h3>
+              <p class="text-sm text-gray-600 mb-4">要否をお選びください</p>
+
+              <div class="flex items-start mb-6 p-4 border border-gray-200 rounded-md bg-white">
+                <label class="flex items-center cursor-pointer mt-1">
+                  <input type="checkbox" name="specialPersonalLiability" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.specialPersonalLiability ? 'checked' : ''}>
+                  <span class="ml-3 text-lg font-medium text-gray-800">個人賠償責任特約</span>
+                </label>
+                <p class="ml-auto text-sm text-gray-600 max-w-sm">
+                  日常生活で他人にケガをさせたり他人の物を壊した場合の賠償事故を補償
+                </p>
+              </div>
+
+              <div class="flex items-start mb-6 p-4 border border-gray-200 rounded-md bg-white">
+                <label class="flex items-center cursor-pointer mt-1">
+                  <input type="checkbox" name="specialFireSpreadCompensation" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.specialFireSpreadCompensation ? 'checked' : ''}>
+                  <span class="ml-3 text-lg font-medium text-gray-800">類焼損害補償特約</span>
+                </label>
+                <p class="ml-auto text-sm text-gray-600 max-w-sm">
+                  自宅からの失火で近隣の住宅等に燃え移り損害を与えた場合に補償
+                </p>
+              </div>
+
+              <div class="flex items-start mb-6 p-4 border border-gray-200 rounded-md bg-white">
+                <label class="flex items-center cursor-pointer mt-1">
+                  <input type="checkbox" name="specialEarthquakeExcessCoverage" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.specialEarthquakeExcessCoverage ? 'checked' : ''}>
+                  <span class="ml-3 text-lg font-medium text-gray-800">地震危険等上乗せ特約</span>
+                </label>
+                <p class="ml-auto text-sm text-gray-600 max-w-sm">
+                  地震等を原因とする火災、損壊、埋没、流失の損害が生じた場合に、地震保険金額とあわせて、最大で火災保険金額の100%まで補償します。
+                </p>
+              </div>
+
+              <div class="flex items-start mb-6 p-4 border border-gray-200 rounded-md bg-white">
+                <label class="flex items-center cursor-pointer mt-1">
+                  <input type="checkbox" name="specialEarthquakeFirePlan" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.specialEarthquakeFirePlan ? 'checked' : ''}>
+                  <span class="ml-3 text-lg font-medium text-gray-800">地震火災特約</span>
+                </label>
+                <div class="ml-auto flex flex-col items-end">
+                  <div class="flex items-center mb-1 ${formData.specialEarthquakeFirePlan ? '' : 'hidden'}" id="earthquake-fire-plan-type-field">
+                    <span class="text-sm text-gray-600 mr-2">プラン:</span>
+                    <select name="specialEarthquakeFirePlanType" class="px-2 py-1 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]">
+                      <option value="">選択してください</option>
+                      <option value="30プラン" ${formData.specialEarthquakeFirePlanType === '30プラン' ? 'selected' : ''}>30プラン (80%)</option>
+                      <option value="50プラン" ${formData.specialEarthquakeFirePlanType === '50プラン' ? 'selected' : ''}>50プラン (100%)</option>
+                    </select>
+                  </div>
+                  <p class="text-sm text-gray-600 max-w-sm text-right">
+                    地震等を原因とする火災の損害が生じた場合に、地震保険金・地震火災費用保険金とあわせて、最大で火災保険金額の100% (50プラン) または80% (30プラン) まで補償します。
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex items-start mb-6 p-4 border border-gray-200 rounded-md bg-white">
+                <label class="flex items-center cursor-pointer mt-1">
+                  <input type="checkbox" name="specialReconstructionCost" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.specialReconstructionCost ? 'checked' : ''}>
+                  <span class="ml-3 text-lg font-medium text-gray-800">建てかえ費用特約</span>
+                </label>
+                <p class="ml-auto text-sm text-gray-600 max-w-sm">
+                  住宅が火災・風災・雪災などの損害保険金のお支払対象となる事故により70%以上の損害が生じた場合に、新築に建てかえることができる特約です。
+                </p>
+              </div>
+
+              <div class="flex items-start mb-6 p-4 border border-gray-200 rounded-md bg-white">
+                <label class="flex items-center cursor-pointer mt-1">
+                  <input type="checkbox" name="specialBuildingElectricalMechanicalAccident" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.specialBuildingElectricalMechanicalAccident ? 'checked' : ''}>
+                  <span class="ml-3 text-lg font-medium text-gray-800">建物電気的・機械的事故特約</span>
+                </label>
+                <p class="ml-auto text-sm text-gray-600 max-w-sm">
+                  建物に付加された空調設備、電気設備、給排水・衛生設備、消火設備、昇降設備、厨房設備、駐車場機械設備などについて、電気的・機械的事故により損害が生じた場合に補償します。
+                </p>
+              </div>
+
+              <div class="flex items-start mb-6 p-4 border border-gray-200 rounded-md bg-white">
+                <label class="flex items-center cursor-pointer mt-1">
+                  <input type="checkbox" name="specialPortablePropertyDamage" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.specialPortablePropertyDamage ? 'checked' : ''}>
+                  <span class="ml-3 text-lg font-medium text-gray-800">携行品損害特約</span>
+                </label>
+                <p class="ml-auto text-sm text-gray-600 max-w-sm">
+                  被保険者が携行している身の回り品について、不測かつ突発的な事故により損害が生じた場合に補償します。
+                </p>
+              </div>
+
+              <div class="flex items-start mb-6 p-4 border border-gray-200 rounded-md bg-white">
+                <label class="flex items-center cursor-pointer mt-1">
+                  <input type="checkbox" name="specialSolarPanelProfitCyberRisk" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.specialSolarPanelProfitCyberRisk ? 'checked' : ''}>
+                  <span class="ml-3 text-lg font-medium text-gray-800">太陽光発電利益・住宅内サイバーリスク補償特約</span>
+                </label>
+                <p class="ml-auto text-sm text-gray-600 max-w-sm">
+                  太陽光発電システムの売電収入損失やサイバー攻撃による費用を補償します。
+                </p>
+              </div>
+
+              <div class="flex items-start mb-6 p-4 border border-gray-200 rounded-md bg-white">
+                <label class="flex items-center cursor-pointer mt-1">
+                  <input type="checkbox" name="specialLawyerFee" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.specialLawyerFee ? 'checked' : ''}>
+                  <span class="ml-3 text-lg font-medium text-gray-800">弁護士費用特約</span>
+                </label>
+                <p class="ml-auto text-sm text-gray-600 max-w-sm">
+                  日常生活で起こる被害事故や人格権侵害に関する紛争で、弁護士に相談・依頼する費用等を補償します。
+                </p>
+              </div>
+
+              <div class="flex items-start mb-6 p-4 border border-gray-200 rounded-md bg-white">
+                <label class="inline-flex items-center cursor-pointer mt-1">
+                  <input type="checkbox" name="specialTenantLiability" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.specialTenantLiability ? 'checked' : ''}>
+                  <span class="ml-3 text-lg font-medium text-gray-800">借家人賠償責任特約</span>
+                </label>
+                <p class="ml-auto text-sm text-gray-600 max-w-sm">
+                  賃貸住宅の場合、大家さんへの賠償事故を補償
+                </p>
+              </div>
+
+              <div class="flex items-start mb-6 p-4 border border-gray-200 rounded-md bg-white">
+                <label class="inline-flex items-center cursor-pointer mt-1">
+                  <input type="checkbox" name="specialBuildingManagementLiability" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.specialBuildingManagementLiability ? 'checked' : ''}>
+                  <span class="ml-3 text-lg font-medium text-gray-800">建物管理賠償責任特約(マンション管理組合向け)</span>
+                </label>
+                <p class="ml-auto text-sm text-gray-600 max-w-sm">
+                  マンション共用部分の管理不備による賠償事故を補償
+                </p>
+              </div>
+
+              <div class="flex items-start mb-6 p-4 border border-gray-200 rounded-md bg-white">
+                <label class="inline-flex items-center cursor-pointer mt-1">
+                  <input type="checkbox" name="specialHouseRepairTroubleLawyerFee" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.specialHouseRepairTroubleLawyerFee ? 'checked' : ''}>
+                  <span class="ml-3 text-lg font-medium text-gray-800">住宅修理トラブル弁護士費用特約</span>
+                </label>
+                <p class="ml-auto text-sm text-gray-600 max-w-sm">
+                  悪質な住宅修理業者とのトラブル解決のための弁護士費用等を補償
+                </p>
+              </div>
+
+              <div class="flex items-start mb-6 p-4 border border-gray-200 rounded-md bg-white">
+                <label class="inline-flex items-center cursor-pointer mt-1">
+                  <input type="checkbox" name="specialBalconyRepairCost" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.specialBalconyRepairCost ? 'checked' : ''}>
+                  <span class="ml-3 text-lg font-medium text-gray-800">バルコニー等修繕費用補償特約(マンション向け)</span>
+                </label>
+                <p class="ml-auto text-sm text-gray-600 max-w-sm">
+                  分譲マンションのバルコニー等の修繕費用を補償
+                </p>
+              </div>
+
+              <div class="mb-6">
+                <label for="specialOtherClause" class="block text-gray-700 text-lg font-medium mb-2">
+                  その他ご希望の特約
+                </label>
+                <textarea id="specialOtherClause" name="specialOtherClause" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]">${formData.specialOtherClause}</textarea>
+              </div>
+
+            </div>
+          </div>
+        `;
+
+        // イベントリスナーの設定
+        contentEl.querySelectorAll('input[name="selectedPlan"]').forEach(input => {
+          input.addEventListener('change', (e) => {
+            const selectedPlanValue = e.target.value;
+            let updatedCoverages = {};
+            let updatedDeductibles = {};
+
+            // プランに応じた補償内容の設定
+            switch (selectedPlanValue) {
+              case 'スリムプラン':
+                updatedCoverages = {
+                  coverageWaterDamage: false,
+                  coverageTheft: false,
+                  coverageFloodDamage: false, // スリムプランでは水災も含まれないと解釈
+                  coverageAccidentalDamage: false
+                };
+                break;
+              case 'ベーシック(II型)プラン':
+                updatedCoverages = {
+                  coverageWaterDamage: true,
+                  coverageTheft: true,
+                  coverageFloodDamage: true,
+                  coverageAccidentalDamage: false
+                };
+                // 必要に応じて、デフォルトの自己負担額を設定
+                if (!formData.coverageWaterDamageDeductible) updatedDeductibles.coverageWaterDamageDeductible = '0円';
+                if (!formData.coverageTheftDeductible) updatedDeductibles.coverageTheftDeductible = '0円';
+                break;
+              case 'ベーシック(I型)プラン':
+                updatedCoverages = {
+                  coverageWaterDamage: true,
+                  coverageTheft: true,
+                  coverageFloodDamage: true,
+                  coverageAccidentalDamage: true
+                };
+                // 必要に応じて、デフォルトの自己負担額を設定
+                if (!formData.coverageWaterDamageDeductible) updatedDeductibles.coverageWaterDamageDeductible = '0円';
+                if (!formData.coverageTheftDeductible) updatedDeductibles.coverageTheftDeductible = '0円';
+                if (!formData.coverageAccidentalDamageDeductible) updatedDeductibles.coverageAccidentalDamageDeductible = '0円';
+                break;
+              default:
+                // プランが未選択の場合や予期しない値の場合、既存のチェックを維持するか、全てオフにする
+                // ここでは、一旦全てオフにするロジックにしています。
+                updatedCoverages = {
+                  coverageWaterDamage: false,
+                  coverageTheft: false,
+                  coverageFloodDamage: false,
+                  coverageAccidentalDamage: false
+                };
+                break;
+            }
+
+            // 補償がFalseになった場合、関連する自己負担額をクリア
+            if (!updatedCoverages.coverageWaterDamage) updatedDeductibles.coverageWaterDamageDeductible = '';
+            if (!updatedCoverages.coverageTheft) updatedDeductibles.coverageTheftDeductible = '';
+            if (!updatedCoverages.coverageAccidentalDamage) updatedDeductibles.coverageAccidentalDamageDeductible = '';
+
+
+            // formDataをまとめて更新して再レンダリング
+            updateFormDataAndRender({
+              selectedPlan: selectedPlanValue,
+              ...updatedCoverages,
+              ...updatedDeductibles
+            });
+          });
+        });
+
+        contentEl.querySelectorAll('input[name^="coverage"], select[name^="coverage"]').forEach(input => {
+          input.addEventListener('change', (e) => {
+            const name = e.target.name;
+            const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+            updateFormDataAndRender(name, value);
+
+            // 自己負担額フィールドの表示/非表示を切り替える
+            if (name === 'coverageWaterDamage') {
+                document.getElementById('water-damage-deductible-field').classList.toggle('hidden', !value);
+                if (!value) updateFormDataAndRender('coverageWaterDamageDeductible', '');
+            } else if (name === 'coverageTheft') {
+                document.getElementById('theft-deductible-field').classList.toggle('hidden', !value);
+                if (!value) updateFormDataAndRender('coverageTheftDeductible', '');
+            } else if (name === 'coverageAccidentalDamage') {
+                document.getElementById('accidental-damage-deductible-field').classList.toggle('hidden', !value);
+                if (!value) updateFormDataAndRender('coverageAccidentalDamageDeductible', '');
+            }
+          });
+        });
+
+        contentEl.querySelectorAll('input[name="addEarthquakeInsurance"]').forEach(input => {
+            input.addEventListener('change', (e) => {
+                const val = e.target.value;
+                updateFormDataAndRender('addEarthquakeInsurance', val);
+                document.getElementById('earthquake-insurance-details').classList.toggle('hidden', val !== 'はい');
+                if (val === 'いいえ') {
+                    updateFormDataAndRender({earthquakeBuildingInsuranceAmount: '', earthquakeHouseholdInsuranceAmount: '', earthquakeDiscountApplicable: ''});
+                }
+            });
+        });
+
+        contentEl.querySelectorAll('input[name="earthquakeBuildingInsuranceAmount"], input[name="earthquakeHouseholdInsuranceAmount"], input[name="earthquakeDiscountApplicable"]').forEach(input => {
+          input.addEventListener('input', (e) => updateFormDataAndRender(e.target.name, e.target.value));
+          input.addEventListener('change', (e) => updateFormDataAndRender(e.target.name, e.target.value)); // For radio buttons
+        });
+
+        contentEl.querySelectorAll('input[name^="special"], select[name^="special"], textarea[name^="special"]').forEach(input => {
+            input.addEventListener('change', (e) => {
+                const name = e.target.name;
+                const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+                updateFormDataAndRender(name, value);
+
+                if (name === 'specialEarthquakeFirePlan') {
+                    document.getElementById('earthquake-fire-plan-type-field').classList.toggle('hidden', !value);
+                    if (!value) updateFormDataAndRender('specialEarthquakeFirePlanType', '');
+                }
+            });
+        });
+
+
+        // 初回レンダリング時の表示制御
+        document.getElementById('water-damage-deductible-field').classList.toggle('hidden', !formData.coverageWaterDamage);
+        document.getElementById('theft-deductible-field').classList.toggle('hidden', !formData.coverageTheft);
+        document.getElementById('accidental-damage-deductible-field').classList.toggle('hidden', !formData.coverageAccidentalDamage);
+        document.getElementById('earthquake-insurance-details').classList.toggle('hidden', formData.addEarthquakeInsurance !== 'はい');
+        document.getElementById('earthquake-household-insurance-amount-section').classList.toggle('hidden', formData.insureHouseholdGoods !== 'はい');
+        document.getElementById('earthquake-fire-plan-type-field').classList.toggle('hidden', !formData.specialEarthquakeFirePlan);
+
+      }
+
+      // 3. その他・ご要望
+      function renderOtherNotesForm() {
+        const contentEl = document.getElementById('app-content');
+        contentEl.innerHTML = `
+          <div class="p-6 bg-white rounded-lg shadow-md border border-gray-200">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">3. その他・ご要望</h2>
+
+            <div class="mb-6">
+              <label class="block text-gray-700 text-lg font-medium mb-3">お支払い方法のご希望</label>
+              <div class="flex flex-wrap gap-4">
+                ${['口座振替', 'クレジットカード', 'その他'].map(method => `
+                  <label class="flex items-center px-4 py-2 border rounded-full cursor-pointer transition-colors duration-200 ${formData.paymentMethod === method ? 'bg-[#CC0022] text-white border-[#CC0022] shadow-md' : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'}">
+                    <input type="radio" name="paymentMethod" value="${method}" class="hidden" ${formData.paymentMethod === method ? 'checked' : ''}>
+                    <span class="font-semibold">${method}</span>
+                  </label>
+                `).join('')}
+                <input type="text" id="paymentMethodOther" name="paymentMethodOther" value="${formData.paymentMethodOther}" class="w-48 px-3 py-1 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022] ${formData.paymentMethod === 'その他' ? '' : 'hidden'}" placeholder="具体的に記入">
+              </div>
+            </div>
+
+            <div class="mb-8">
+              <label class="block text-gray-700 text-lg font-medium mb-3">お支払い回数</label>
+              <div class="flex flex-wrap gap-4">
+                ${['一時払', '年払', '月払'].map(frequency => `
+                  <label class="flex items-center px-4 py-2 border rounded-full cursor-pointer transition-colors duration-200 ${formData.paymentFrequency === frequency ? 'bg-[#CC0022] text-white border-[#CC0022] shadow-md' : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'}">
+                    <input type="radio" name="paymentFrequency" value="${frequency}" class="hidden" ${formData.paymentFrequency === frequency ? 'checked' : ''}>
+                    <span class="font-semibold">${frequency}</span>
+                  </label>
+                `).join('')}
+              </div>
+            </div>
+
+            <div class="mb-6">
+              <label for="desiredPlanDetails" class="block text-gray-700 text-lg font-medium mb-2">
+                お見積りプランのご希望 (例:充実プラン、標準プラン、節約プランなど)
+              </label>
+              <textarea id="desiredPlanDetails" name="desiredPlanDetails" rows="4" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]" placeholder="ご希望のプランについてご記入ください">${formData.desiredPlanDetails}</textarea>
+            </div>
+
+            <div class="mb-6">
+              <label for="importantPoints" class="block text-gray-700 text-lg font-medium mb-2">
+                特に重視する点 (例:保険料の安さ、補償の手厚さ、水災への備えなど)
+              </label>
+              <textarea id="importantPoints" name="importantPoints" rows="4" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]" placeholder="特に重視する点を具体的にご記入ください">${formData.importantPoints}</textarea>
+            </div>
+
+            <div class="mb-6">
+              <label for="otherQuestions" class="block text-gray-700 text-lg font-medium mb-2">
+                その他、ご質問、ご要望などご自由にお書きください。
+              </label>
+              <textarea id="otherQuestions" name="otherQuestions" rows="4" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]" placeholder="ご質問やご要望があればご記入ください">${formData.otherQuestions}</textarea>
+            </div>
+
+            <!-- 同意チェックボックスの追加 -->
+            <div class="bg-blue-50 border-l-4 border-blue-400 text-blue-800 p-4 rounded-md mt-8" role="alert">
+              <label class="inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="consentToSubmit" name="consentToSubmit" class="form-checkbox h-5 w-5 text-[#CC0022] rounded" ${formData.consentToSubmit ? 'checked' : ''}>
+                <span class="ml-3 font-semibold text-lg">
+                  上記記入内容に基づき、保険のお見積り・ご提案をさせていただくことに同意いたします。
+                </span>
+              </label>
+            </div>
+
+            <div class="mb-6 mt-6">
+                <label for="signature" class="block text-gray-700 text-lg font-medium mb-2">署名:</label>
+                <input type="text" id="signature" name="signature" value="${formData.signature}" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]">
+            </div>
+            <div class="mb-6">
+                <label class="block text-gray-700 text-lg font-medium mb-2">日付:</label>
+                <div class="flex items-center space-x-2">
+                    <input type="number" id="signYear" name="signYear" value="${formData.signYear}" class="w-24 px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]" placeholder="YYYY">
+                    <span>年</span>
+                    <input type="number" id="signMonth" name="signMonth" value="${formData.signMonth}" class="w-20 px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]" placeholder="MM">
+                    <span>月</span>
+                    <input type="number" id="signDay" name="signDay" value="${formData.signDay}" class="w-20 px-4 py-2 border border-gray-300 rounded-md focus:ring-[#CC0022] focus:border-[#CC0022]" placeholder="DD">
+                    <span>日</span>
+                </div>
+            </div>
+          </div>
+        `;
+
+        // イベントリスナーの設定
+        contentEl.querySelectorAll('input[name="paymentMethod"]').forEach(input => {
+          input.addEventListener('change', (e) => {
+            const val = e.target.value;
+            updateFormDataAndRender('paymentMethod', val);
+            document.getElementById('paymentMethodOther').classList.toggle('hidden', val !== 'その他');
+            if (val !== 'その他') updateFormDataAndRender('paymentMethodOther', '');
+          });
+        });
+
+        contentEl.querySelectorAll('input[name="paymentFrequency"]').forEach(input => {
+          input.addEventListener('change', (e) => updateFormDataAndRender(e.target.name, e.target.value));
+        });
+
+        contentEl.querySelectorAll('input[type="text"], input[type="number"], textarea').forEach(input => {
+          input.addEventListener('input', (e) => updateFormDataAndRender(e.target.name, e.target.value));
+        });
+
+        // 同意チェックボックスのイベントリスナー
+        contentEl.querySelector('#consentToSubmit').addEventListener('change', (e) => {
+          updateFormDataAndRender('consentToSubmit', e.target.checked);
+        });
+
+        // 初回レンダリング時の表示制御
+        document.getElementById('paymentMethodOther').classList.toggle('hidden', formData.paymentMethod !== 'その他');
+      }
+
+      // Confirmation Screen
+      function renderConfirmationScreen() {
+        const contentEl = document.getElementById('app-content');
+        const incompleteFields = getIncompleteFields(formData);
+
+        const renderSection = (title, data, fields) => {
+          let sectionHtml = `
+            <div class="mb-8 p-6 border border-gray-300 rounded-lg bg-gray-50">
+              <h3 class="text-xl font-bold text-gray-800 mb-4 flex justify-between items-center">
+                ${title}
+                <button type="button" class="text-blue-600 hover:text-blue-800 text-sm font-semibold flex items-center edit-section-btn" data-section="${title}">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                  編集
+                </button>
+              </h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-gray-700">
+          `;
+          fields.forEach(field => {
+            let displayValue;
+            if (typeof data[field.key] === 'boolean') {
+              displayValue = data[field.key] ? '要' : '不要';
+            } else if (Array.isArray(data[field.key])) {
+              displayValue = data[field.key].length > 0
+                ? data[field.key].map(item => typeof item === 'object' ? JSON.stringify(item) : item).join(', ')
+                : '未入力';
+            } else if (field.key === 'totalFloorArea' && data.totalFloorArea) {
+                displayValue = `${data.totalFloorArea} m² (約 ${data.totalFloorAreaTsubo} 坪)`;
+            } else if (field.key === 'exclusiveArea' && data.exclusiveArea) {
+                displayValue = `${data.exclusiveArea} m² (約 ${data.exclusiveAreaTsubo} 坪)`;
+            } else if (field.key === 'constructionYear') {
+                displayValue = `${data.constructionYear}年${data.constructionMonth}月築`;
+            } else if (field.key === 'propertyLocationAddress' && data.propertyLocationSameAsReception === '受付票記載のご住所と同じ') {
+                displayValue = '受付票記載のご住所と同じ';
+            } else if (field.key === 'buildingCategoryOther' && data.buildingCategory !== 'その他') {
+                displayValue = 'N/A';
+            } else if (field.key === 'buildingStructureOther' && data.buildingStructure !== 'その他') {
+                displayValue = 'N/A';
+            } else if (field.key === 'buildingOwnerOtherRelationship' && data.buildingOwner !== 'その他') {
+                displayValue = 'N/A';
+            } else if (field.key === 'buildingOwnerOtherName' && data.buildingOwner !== 'その他') {
+                displayValue = 'N/A';
+            } else if (field.key === 'seismicDiagnosisResult' && data.seismicDiagnosis !== '受けたことがある') {
+                displayValue = 'N/A';
+            } else if (field.key === 'specialFoundationStructureDetails' && data.specialFoundationStructure !== 'はい') {
+                displayValue = 'N/A';
+            } else if (field.key === 'desiredHouseholdInsuranceAmount' && data.insureHouseholdGoods !== 'はい') {
+                displayValue = 'N/A';
+            } else if (field.key === 'householdDeductible' && data.insureHouseholdGoods !== 'はい') {
+                displayValue = 'N/A';
+            } else if (field.key === 'householdHeadAge' && data.insureHouseholdGoods !== 'はい') {
+                displayValue = 'N/A';
+            } else if (field.key === 'hasValuableItems' && data.insureHouseholdGoods !== 'はい') {
+                displayValue = 'N/A';
+            } else if (field.key === 'coverageWaterDamageDeductible' && !data.coverageWaterDamage) {
+                displayValue = 'N/A';
+            } else if (field.key === 'coverageTheftDeductible' && !data.coverageTheft) {
+                displayValue = 'N/A';
+            } else if (field.key === 'coverageAccidentalDamageDeductible' && !data.coverageAccidentalDamage) {
+                displayValue = 'N/A';
+            } else if (field.key === 'earthquakeBuildingInsuranceAmount' && data.addEarthquakeInsurance !== 'はい') {
+                displayValue = 'N/A';
+            } else if (field.key === 'earthquakeHouseholdInsuranceAmount' && (data.addEarthquakeInsurance !== 'はい' || data.insureHouseholdGoods !== 'はい')) {
+                displayValue = 'N/A';
+            } else if (field.key === 'earthquakeDiscountApplicable' && data.addEarthquakeInsurance !== 'はい') {
+                displayValue = 'N/A';
+            } else if (field.key === 'specialEarthquakeFirePlanType' && !data.specialEarthquakeFirePlan) {
+                displayValue = 'N/A';
+            } else if (field.key === 'paymentMethodOther' && data.paymentMethod !== 'その他') {
+                displayValue = 'N/A';
+            }
+            else {
+              displayValue = (data[field.key] !== null && data[field.key] !== undefined && String(data[field.key]).trim() !== '')
+                ? data[field.key]
+                : '未入力';
+            }
+            
+            sectionHtml += `
+              <div class="flex flex-col">
+                <span class="font-medium text-gray-600 text-sm">${field.label}:</span>
+                <span class="text-gray-800 text-base break-words">${displayValue}</span>
+              </div>
+            `;
+          });
+          sectionHtml += `
+              </div>
+            </div>
+          `;
+          return sectionHtml;
+        };
+
+        contentEl.innerHTML = `
+          <div class="p-6 bg-white rounded-lg shadow-md border border-gray-200">
+            <h2 class="text-3xl font-bold text-gray-800 mb-8 text-center">入力内容のご確認</h2>
+            <p class="text-lg text-gray-600 mb-8 text-center">
+              ご入力いただいた内容をご確認ください。修正が必要な場合は「編集」ボタンをクリックしてください。
+            </p>
+
+            <div id="incomplete-fields-alert"></div>
+
+            <div id="pdf-content-to-capture">
+                <!-- Header Information for PDF -->
+                <div class="mb-8 p-6 bg-red-100 rounded-lg text-red-800 border border-red-200 section-highlight-red">
+                    <p class="mb-4 text-center">
+                        取扱代理店名: リバティ保険ショップ ([宇都宮店/宇都宮南店])
+                    </p>
+                    <p class="mb-4 text-center">
+                        参照書類: 新規受付票(受付日: 西暦${formData.receptionYear}年${formData.receptionMonth}月${formData.receptionDay}日)
+                    </p>
+                    <p class="text-center font-semibold">お客さまの氏名: ${formData.customerName} 様</p>
+                </div>
+
+              ${renderSection(
+                '1. 保険の対象となる物件の情報 - 建物について',
+                formData,
+                [
+                  { label: '物件所在地', key: 'propertyLocationAddress' }, // propertyLocationSameAsReceptionもここで表現
+                  { label: '郵便番号', key: 'propertyLocationPostalCode' },
+                  { label: '建物区分', key: 'buildingCategory' },
+                  { label: '建物区分(その他)', key: 'buildingCategoryOther' },
+                  { label: '建物構造', key: 'buildingStructure' },
+                  { label: '建物構造(その他)', key: 'buildingStructureOther' },
+                  { label: '建築年月', key: 'constructionYear' },
+                  { label: '延床面積(建物全体)', key: 'totalFloorArea' },
+                  { label: '専有面積(マンション戸室)', key: 'exclusiveArea' },
+                  { label: '建物所有者', key: 'buildingOwner' },
+                  { label: '建物所有者(続柄)', key: 'buildingOwnerOtherRelationship' },
+                  { label: '建物所有者(氏名)', key: 'buildingOwnerOtherName' },
+                  { label: '建物の使用状況', key: 'buildingUsage' },
+                  { label: '耐震診断の有無・結果', key: 'seismicDiagnosis' },
+                  { label: '耐震診断結果', key: 'seismicDiagnosisResult' },
+                  { label: '特殊な基礎・構造ですか?', key: 'specialFoundationStructure' },
+                  { label: '特殊な基礎・構造の具体例', key: 'specialFoundationStructureDetails' },
+                ]
+              )}
+
+              ${renderSection(
+                '2. 保険の対象となる物件の情報 - 家財について',
+                formData,
+                [
+                  { label: '家財を保険の対象にしますか?', key: 'insureHouseholdGoods' },
+                  { label: '世帯主様の年齢', key: 'householdHeadAge' },
+                  { label: '高額な貴金属・美術品等', key: 'hasValuableItems' },
+                ]
+              )}
+
+              ${renderSection(
+                '3. ご希望の補償内容 - 保険金額',
+                formData,
+                [
+                  { label: '建物のご希望の保険金額', key: 'desiredBuildingInsuranceAmount' },
+                  { label: '家財のご希望の保険金額', key: 'desiredHouseholdInsuranceAmount' },
+                  { label: '建物の自己負担額', key: 'buildingDeductible' },
+                  { label: '家財の自己負担額', key: 'householdDeductible' },
+                ]
+              )}
+
+              ${renderSection(
+                '4. ご希望の補償内容 - 保険期間',
+                formData,
+                [
+                  { label: 'ご希望の保険期間', key: 'desiredInsurancePeriodYears' },
+                  { label: 'ご希望の保険期間(具体的な年数)', key: 'desiredInsurancePeriodCustom' },
+                  { label: '保険始期(開始日)', key: 'insuranceStartDate' },
+                ]
+              )}
+
+              ${renderSection(
+                '5. ご希望の補償内容 - 基本補償・主な費用保険金・地震保険・特約',
+                formData,
+                [
+                  { label: 'ご希望のプラン', key: 'selectedPlan' },
+                  { label: '火災、落雷、破裂・爆発', key: 'coverageFireLightningExplosion' },
+                  { label: '風災、雹(ひょう)災、雪災', key: 'coverageWindHailSnow' },
+                  { label: '水濡れ', key: 'coverageWaterDamage' },
+                  { label: '水濡れ自己負担額', key: 'coverageWaterDamageDeductible' },
+                  { label: '盗難', key: 'coverageTheft' },
+                  { label: '盗難自己負担額', key: 'coverageTheftDeductible' },
+                  { label: '水災', key: 'coverageFloodDamage' },
+                  { label: '破損・汚損等', key: 'coverageAccidentalDamage' },
+                  { label: '破損・汚損等自己負担額', key: 'coverageAccidentalDamageDeductible' },
+                  { label: '残存物取片づけ費用', key: 'expenseRemainingPropertyClearance' },
+                  { label: '損害範囲確定費用', key: 'expenseDamageScopeConfirmation' },
+                  { label: '仮修理費用', key: 'expenseTemporaryRepair' },
+                  { label: '復旧付随費用(仮住まい費用等含む)', key: 'expenseRestorationIncidental' },
+                  { label: '地震火災費用保険金', key: 'expenseEarthquakeFire' },
+                  { label: '水道管修理費用保険金', key: 'expenseWaterPipeRepair' },
+                  { label: 'ドアロック交換費用保険金', key: 'expenseDoorLockReplacement' },
+                  { label: '臨時費用保険金', key: 'expenseTemporaryAllowance' },
+                  { label: '損害防止費用', key: 'expenseDamagePrevention' },
+                  { label: '地震保険を付帯しますか?', key: 'addEarthquakeInsurance' },
+                  { label: '地震保険金額(建物)', key: 'earthquakeBuildingInsuranceAmount' },
+                  { label: '地震保険金額(家財)', key: 'earthquakeHouseholdInsuranceAmount' },
+                  { label: '建物の免震建築物割引・耐震等級割引等', key: 'earthquakeDiscountApplicable' },
+                  { label: '個人賠償責任特約', key: 'specialPersonalLiability' },
+                  { label: '類焼損害補償特約', key: 'specialFireSpreadCompensation' },
+                  { label: '地震危険等上乗せ特約', key: 'specialEarthquakeExcessCoverage' },
+                  { label: '地震火災特約', key: 'specialEarthquakeFirePlan' },
+                  { label: '地震火災特約プラン', key: 'specialEarthquakeFirePlanType' },
+                  { label: '建てかえ費用特約', key: 'specialReconstructionCost' },
+                  { label: '建物電気的・機械的事故特約', key: 'specialBuildingElectricalMechanicalAccident' },
+                  { label: '携行品損害特約', key: 'specialPortablePropertyDamage' },
+                  { label: '太陽光発電利益・住宅内サイバーリスク補償特約', key: 'specialSolarPanelProfitCyberRisk' },
+                  { label: '弁護士費用特約', key: 'specialLawyerFee' },
+                  { label: '借家人賠償責任特約', key: 'specialTenantLiability' },
+                  { label: '建物管理賠償責任特約(マンション管理組合向け)', key: 'specialBuildingManagementLiability' },
+                  { label: '住宅修理トラブル弁護士費用特約', key: 'specialHouseRepairTroubleLawyerFee' },
+                  { label: 'バルコニー等修繕費用補償特約(マンション向け)', key: 'specialBalconyRepairCost' },
+                  { label: 'その他ご希望の特約', key: 'specialOtherClause' },
+                ]
+              )}
+
+              ${renderSection(
+                '6. お支払い方法、その他・ご要望',
+                formData,
+                [
+                  { label: 'お支払い方法', key: 'paymentMethod' },
+                  { label: 'その他支払い方法', key: 'paymentMethodOther' },
+                  { label: 'お支払い回数', key: 'paymentFrequency' },
+                  { label: 'お見積りプランのご希望', key: 'desiredPlanDetails' },
+                  { label: '特に重視する点', key: 'importantPoints' },
+                  { label: 'その他、ご質問、ご要望など', key: 'otherQuestions' },
+                  { label: '同意済み', key: 'consentToSubmit' },
+                  { label: '署名', key: 'signature' },
+                  { label: '日付', key: 'signYear', format: (data) => `${data.signYear}年${data.signMonth}月${data.signDay}日` }
+                ]
+              )}
+            </div>
+            <!-- Footer Information for PDF -->
+            <div class="mt-8 p-6 bg-red-100 rounded-lg text-red-800 border border-red-200 section-highlight-red text-center">
+                <p class="mb-2">ご記入、誠にありがとうございました。</p>
+                <p class="mb-4">いただきました情報と「新規受付票」に基づきまして、お客様に最適なプランのお見積りを作成させていただきます。</p>
+                <p class="font-semibold">損害保険ジャパン株式会社</p>
+                <p class="font-semibold">取扱代理店 リバティ保険ショップ [宇都宮店/宇都宮南店]</p>
+                <p>宇都宮店:栃木県宇都宮市今泉町3009-4 電話番号:028-666-7511</p>
+                <p>宇都宮南店:栃木県河内郡上三川町しらさぎ1-6-4 電話番号:0285-37-8512</p>
+                <p>Email: info@hoken-liberty.com</p>
+            </div>
+          </div>
+        `;
+
+        if (incompleteFields.length > 0) {
+          const alertDiv = document.getElementById('incomplete-fields-alert');
+          alertDiv.innerHTML = `
+            <div class="bg-orange-50 border-l-4 border-orange-500 text-orange-700 p-4 rounded-md mb-8" role="alert">
+              <p class="font-bold text-lg mb-2 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                未入力の項目があります
+              </p>
+              <p class="mb-3">
+                以下の項目が未入力です。このままPDF出力することも可能ですが、詳細な見積もりには追加情報が必要となる場合があります。
+              </p>
+              <ul class="list-disc list-inside text-sm max-h-40 overflow-y-auto pr-2">
+                ${incompleteFields.map(field => `<li>${field}</li>`).join('')}
+              </ul>
+            </div>
+          `;
+        } else {
+          document.getElementById('incomplete-fields-alert').innerHTML = '';
+        }
+
+        contentEl.querySelectorAll('.edit-section-btn').forEach(button => {
+          button.addEventListener('click', (e) => {
+            const sectionTitle = e.target.closest('.edit-section-btn').dataset.section;
+            handleEdit(sectionTitle);
+          });
+        });
+      }
+
+      // メインのレンダリング関数
+      function renderApp() {
+        renderHeader();
+        const mainContentEl = document.getElementById('app-content');
+        mainContentEl.innerHTML = ''; // メインコンテンツをクリア
+
+        switch (currentStep) {
+          case 0: renderWelcomeScreen(); break;
+          case 1: renderBuildingInfoForm(); break;
+          case 2: renderHouseholdInfoForm(); break;
+          case 3: renderCoverageAmountForm(); break;
+          case 4: renderInsurancePeriodForm(); break;
+          case 5: renderCoverageDetailsForm(); break;
+          case 6: renderOtherNotesForm(); break;
+          case 7: renderConfirmationScreen(); break; // 確認画面
+          default: renderWelcomeScreen(); break;
+        }
+        renderFooter(); // フッターは常に表示
+      }
+
+      // ページ読み込み完了後にアプリケーションを初期化
+      document.addEventListener('DOMContentLoaded', renderApp);
+    </script>
+  </body>
+</html>
